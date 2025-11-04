@@ -1,0 +1,5 @@
+.update_database: 
+  script:
+    - dotnet build "$MIGRATOR_FOLDER/$MIGRATOR_PROJECT" -c Release
+    - cd "$MIGRATOR_FOLDER"
+    - dotnet run -c Release --no-build

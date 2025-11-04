@@ -1,0 +1,24 @@
+.validate-checklist:
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - echo "🔍 Получаем описание MR..."
+    - |
+      if [ -z "$CI_MERGE_REQUEST_IID" ]; then
+        echo "⚠️ CI_MERGE_REQUEST_IID не установлен. Это не Merge Request pipeline. Пропускаем."
+        exit 0
+      fi
+
+    - |
+      MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID")
+    - DESCRIPTION=$(echo "$MR_INFO" | jq -r '.description')
+    - echo "✅ Проверяем, что все чекбоксы отмечены ([x])..."
+    - |
+      if echo "$DESCRIPTION" | grep -qE '\[ \]'; then
+        echo "❌ Найдены неотмеченные чекбоксы:"
+        echo "$DESCRIPTION" | grep -E '\[ \]'
+        exit 1
+      else
+        echo "✅ Все чекбоксы отмечены. Продолжаем."
+      fi

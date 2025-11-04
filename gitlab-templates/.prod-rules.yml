@@ -1,0 +1,31 @@
+.prod_rules:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      variables:          
+        ENV_SUFFIX: "prod"
+        DEPLOY_ENV: "production"
+      
+    - if: $CI_COMMIT_BRANCH == "main"
+      variables:          
+        ENV_SUFFIX: "prod"
+        DEPLOY_ENV: "production"
+
+    - if: $CI_COMMIT_BRANCH == "stage"
+      variables:
+        ENV_SUFFIX: "stage"
+        DEPLOY_ENV: "stage"
+      
+    - if: $CI_COMMIT_BRANCH == "development"
+      variables:
+        ENV_SUFFIX: "dev"
+        DEPLOY_ENV: "development"
+        
+    - if: $CI_COMMIT_BRANCH == "develop"
+      variables:
+        ENV_SUFFIX: "dev"
+        DEPLOY_ENV: "development"
+        
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        ENV_SUFFIX: "dev"
+        DEPLOY_ENV: "development"  

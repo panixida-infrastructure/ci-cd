@@ -1,0 +1,6 @@
+.ssh_service_stop:
+  script:
+    - echo "Starting to deploy"
+    - chmod og= $SSH_PRIVATE_KEY_ENV
+    - apk update && apk add openssh-client
+    - ssh -i $SSH_PRIVATE_KEY_ENV -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP_ENV "docker container rm -f $SERVICE_NAME_ENV"

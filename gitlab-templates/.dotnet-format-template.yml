@@ -1,0 +1,8 @@
+.format_dotnet:
+  image: mcr.microsoft.com/dotnet/sdk:6.0
+  script:
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+    - dotnet tool install -g dotnet-format || true
+    - export PATH="$PATH:$HOME/.dotnet/tools"
+    - dotnet tool restore
+    - dotnet format --verify-no-changes

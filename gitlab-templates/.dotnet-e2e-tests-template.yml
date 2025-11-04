@@ -1,0 +1,20 @@
+.dotnet_e2e_tests:
+    image: mcr.microsoft.com/dotnet/sdk:6.0
+    variables:
+      ALLURE_API_URL: http://82.97.241.162:5050/allure-docker-service
+    script:
+      - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+      - 'dotnet test'
+    after_script:
+      - FILES_TO_SEND=$(ls -dp $ALLURE_RESULTS_PATH/* | grep -v /$)
+      - if [ -z "$FILES_TO_SEND" ]; then
+      - exit 1
+      - fi
+      - FILES=''
+      - for FILE in $FILES_TO_SEND; do
+      -   FILES+="-F files[]=@$FILE "
+      - done
+      - echo "------------------SEND-TEST-RESULTS------------------"
+      - set -o xtrace
+      - curl -X POST "$ALLURE_API_URL/send-results?force_project_creation=true&project_id=$TEST_SERVICE_NAME" $FILES -ik
+      - echo "report available by link $ALLURE_API_URL/projects/$TEST_SERVICE_NAME/reports/latest/index.html"

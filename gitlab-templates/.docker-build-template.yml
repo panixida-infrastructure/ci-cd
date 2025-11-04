@@ -1,0 +1,9 @@
+.docker_build: 
+  before_script:
+    - unset DOCKER_HOST
+    - docker login -u $REGISTRY_USER -p $REGISTRY_TOKEN $CI_REGISTRY
+  script:
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+    - docker build -t $IMAGE_REGISTRY_PATH -t $LATEST_IMAGE_REGISTRY_PATH_WITH_ENV -f $PROJECT_FOLDER/$SERVICE_FOLDER/Dockerfile ./$PROJECT_FOLDER/$CONTEXT_FOLDER
+    - docker push $IMAGE_REGISTRY_PATH
+    - docker push $LATEST_IMAGE_REGISTRY_PATH_WITH_ENV

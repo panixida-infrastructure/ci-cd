@@ -1,0 +1,31 @@
+.lint_go:
+  image: golang:1.22
+  before_script:
+    - set -euo pipefail
+    - go version
+    - echo "[]" > gl-code-quality-report.json
+    - go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
+    - export PATH="$PATH:$(go env GOPATH)/bin"
+    - go mod download
+    - golangci-lint --version
+  script:
+    - echo "▶️ Running golangci-lint..."
+    - |
+      if [ "${STRICT_LINT:-false}" = "true" ]; then
+        echo "🛑 Strict mode: pipeline will fail on lint issues"
+        EXIT_CODE=1
+      else
+        echo "ℹ️ Non-strict mode: pipeline will NOT fail on lint issues"
+        EXIT_CODE=0
+      fi
+
+      golangci-lint run ./... \
+        -c .golangci.yml \
+        --issues-exit-code="${EXIT_CODE}" \
+        --out-format=code-climate \
+        > gl-code-quality-report.json
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+    expire_in: 7 days

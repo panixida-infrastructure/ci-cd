@@ -1,0 +1,64 @@
+.dotnet_tests:
+    variables:
+        REPORT_DIRECTORY: "tests-report"
+        COVERAGE_DIRECTORY: "tests-report/coverage"
+    coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'         
+    script:
+        - |
+            set -eo pipefail
+            mkdir -p "$REPORT_DIRECTORY"
+            cp "$NUGET_CONFIG_FILE" "./nuget.config"
+            dotnet restore
+
+            set +e
+            dotnet test --results-directory "$REPORT_DIRECTORY" --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test_results.trx"
+            TEST_EXIT=$?
+            set -e
+
+            dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
+            dotnet tool install --global trx2junit
+            export PATH="$PATH:/root/.dotnet/tools"
+
+            mkdir -p "$REPORT_DIRECTORY/junit"
+            trx2junit "$REPORT_DIRECTORY/test_results.trx" --output "$REPORT_DIRECTORY/junit"
+
+            reportgenerator \
+                -reports:"**/coverage.cobertura.xml" \
+                -targetdir:"$COVERAGE_DIRECTORY" \
+                -reporttypes:"Html;Cobertura;TextSummary" \
+                -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
+        
+            cat > "$REPORT_DIRECTORY/coverage-report.html" <<'HTML'
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta http-equiv="refresh" content="0; url=coverage/index.html">
+            </head>
+            </html>
+            HTML
+        
+            cat "$COVERAGE_DIRECTORY/Summary.txt" || true  
+
+            apt-get update && apt-get install -y nodejs npm
+            npm i -g xunit-viewer
+            xunit-viewer -r $REPORT_DIRECTORY/junit -o $REPORT_DIRECTORY/tests-report.html -n "Tests Report"
+
+            LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
+            echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+            awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
+                || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }          
+      
+            exit $TEST_EXIT
+    artifacts:
+        when: always
+        expire_in: 1 days
+        paths:
+            - "tests-report/coverage/"
+            - "tests-report/coverage-report.html"
+            - "tests-report/tests-report.html"
+            - "tests-report/coverage/Summary.txt"
+        reports:
+            junit: "tests-report/junit/*.xml"
+            coverage_report:
+                coverage_format: cobertura
+                path: "tests-report/coverage/Cobertura.xml"

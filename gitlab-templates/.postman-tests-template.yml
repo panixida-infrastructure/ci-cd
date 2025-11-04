@@ -1,0 +1,44 @@
+.postman_tests:
+  image: node:20-alpine
+  environment:
+    name: $DEPLOY_ENV  
+  variables:
+    REPORT_DIRECTORY: "tests-report"
+  script:
+    - set -eo pipefail
+    - apk add --no-cache curl
+    - npm i -g newman newman-reporter-htmlextra
+    - mkdir -p "$REPORT_DIRECTORY" newman
+    
+    - |
+      HOST_IP=$(ip -4 route show default | awk '{print $3}')
+      echo "Host IP: $HOST_IP"
+      export CI_BASE_URL="http://${HOST_IP}:${API_HOST_PORT}"
+
+      echo "⏳ Ждём API на $CI_BASE_URL ..."
+      for i in $(seq 1 5); do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$CI_BASE_URL/health" || echo "000")
+        if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]; then
+          echo "✅ API отвечает (код $STATUS — норм)"
+          break
+        fi
+        if [ "$i" -eq 5 ]; then
+          echo "❌ API не поднялся вовремя (последний код: $STATUS)"
+          exit 1
+        fi
+        echo "⏳ Пока не отвечает (код: $STATUS), ждём..."
+        sleep 1
+      done
+
+      newman run "$POSTMAN_COLLECTION" \
+        --env-var "baseUrl=${CI_BASE_URL}" \
+        --reporters cli,junit,htmlextra \
+        --reporter-junit-export newman/junit.xml \
+        --reporter-htmlextra-export $REPORT_DIRECTORY/tests-report.html
+  artifacts:
+    when: always
+    expire_in: 1 days 
+    paths:
+      - "tests-report/tests-report.html"
+    reports:
+      junit: newman/junit.xml

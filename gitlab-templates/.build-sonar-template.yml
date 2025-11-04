@@ -1,0 +1,38 @@
+.build-sonar:
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  variables:
+    GIT_DEPTH: "0"
+    EXCLUSIONS_LIST: |
+      **/bin/**
+      **/obj/**
+      **/Migrations/**
+      **/wwwroot/**
+      **/nuget.config
+  script: 
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+
+    - "dotnet tool install --global dotnet-sonarscanner"
+    - "export PATH=\"$PATH:$HOME/.dotnet/tools\""
+
+    - |
+        if [ -n "$EXCLUSIONS_LIST" ]; then
+          SONAR_EXCLUSIONS="$(echo "$EXCLUSIONS_LIST" | grep -v '^$' | tr '\n' ',' | sed 's/,$//')"
+          echo "🔍 Using exclusions: $SONAR_EXCLUSIONS"
+        fi
+
+    - >
+      dotnet sonarscanner begin
+      /k:"$SONAR_PATH"
+      /d:sonar.token="$SONAR_TOKEN"
+      /d:sonar.host.url="$SONAR_HOST_URL"
+      ${SONAR_EXCLUSIONS:+/d:sonar.exclusions="$SONAR_EXCLUSIONS"}
+      /d:sonar.qualitygate.wait=true
+      /d:sonar.qualitygate.timeout=1800
+
+    - "dotnet build"
+    - "dotnet sonarscanner end /d:sonar.token=\"$SONAR_TOKEN\""
+
+.build-sonar-go:
+  image:  sonarsource/sonar-scanner-cli:11
+  script: 
+    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
