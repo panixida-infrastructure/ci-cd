@@ -35,7 +35,7 @@ jobs:
             --results-directory "$REPORT_DIRECTORY" \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx"
-      
+
       - name: Install ReportGenerator + trx2junit
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
@@ -57,6 +57,12 @@ jobs:
 
           cat "$COVERAGE_DIRECTORY/Summary.txt" || true
 
+      - name: Publish Test Results
+        if: always()
+        uses: actions/upload-test-results@v2
+        with:
+          junit_files: tests-report/junit/*.xml
+
       - name: Assert coverage threshold
         run: |
           LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
@@ -65,8 +71,8 @@ jobs:
             || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }
 
       - name: Upload coverage artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: |
-            ${{ inputs.project_folder }}/tests-report/
+          path: tests-report/
