@@ -1,0 +1,72 @@
+on:
+  workflow_call:
+    inputs:
+      project_folder:
+        type: string
+        default: .
+      coverage_assembly_filters:
+        type: string
+      coverage_threshold:
+        type: string
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    env:
+      REPORT_DIRECTORY: tests-report
+      COVERAGE_DIRECTORY: tests-report/coverage
+      COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage_assembly_filters }}
+      COVERAGE_THRESHOLD: ${{ inputs.coverage_threshold }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore dependencies
+        working-directory: ${{ inputs.project_folder }}
+        run: dotnet restore
+
+      - name: Run tests with coverage
+        working-directory: ${{ inputs.project_folder }}
+        run: |
+          set -eo pipefail
+          mkdir -p "$REPORT_DIRECTORY"
+          dotnet test \
+            --results-directory "$REPORT_DIRECTORY" \
+            --collect:"XPlat Code Coverage" \
+            --logger "trx;LogFileName=test_results.trx"
+      
+      - name: Install ReportGenerator + trx2junit
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
+          dotnet tool install --global trx2junit
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Convert trx to JUnit XML
+        run: |
+          mkdir -p "$REPORT_DIRECTORY/junit"
+          trx2junit "$REPORT_DIRECTORY/test_results.trx" --output "$REPORT_DIRECTORY/junit"
+
+      - name: Generate coverage report
+        run: |
+          reportgenerator \
+            -reports:"**/coverage.cobertura.xml" \
+            -targetdir:"$COVERAGE_DIRECTORY" \
+            -reporttypes:"Html;Cobertura;TextSummary" \
+            -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
+
+          cat "$COVERAGE_DIRECTORY/Summary.txt" || true
+
+      - name: Assert coverage threshold
+        run: |
+          LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
+          echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+          awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
+            || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            ${{ inputs.project_folder }}/tests-report/
