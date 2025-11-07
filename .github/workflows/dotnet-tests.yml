@@ -10,7 +10,7 @@ on:
         type: string
 
 jobs:
-  tests:
+  run:
     runs-on: ubuntu-latest
 
     env:
