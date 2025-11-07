@@ -22,27 +22,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore dependencies
+      - name: dotnet restore
         working-directory: ${{ inputs.project_folder }}
-        run: dotnet restore
+        run: |
+          dotnet restore
 
       - name: Run tests with coverage
         working-directory: ${{ inputs.project_folder }}
         run: |
           set -eo pipefail
           mkdir -p "$REPORT_DIRECTORY"
+
+          set +e
           dotnet test \
             --results-directory "$REPORT_DIRECTORY" \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx"
+          TEST_EXIT=$?
+          set -e
 
-      - name: Install ReportGenerator + trx2junit
+          echo "Test exit code saved: $TEST_EXIT"
+          echo "TEST_EXIT=$TEST_EXIT" >> $GITHUB_ENV
+
+      - name: Install report tools
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
           dotnet tool install --global trx2junit
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      - name: Convert trx to JUnit XML
+          sudo apt-get update
+          sudo apt-get install -y nodejs npm
+          sudo npm i -g xunit-viewer
+
+      - name: Convert trx → junit
         run: |
           mkdir -p "$REPORT_DIRECTORY/junit"
           trx2junit "$REPORT_DIRECTORY/test_results.trx" --output "$REPORT_DIRECTORY/junit"
@@ -55,13 +67,18 @@ jobs:
             -reporttypes:"Html;Cobertura;TextSummary" \
             -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
 
-          cat "$COVERAGE_DIRECTORY/Summary.txt" || true
+          cat > "$REPORT_DIRECTORY/coverage-report.html" <<'HTML'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta http-equiv="refresh" content="0; url=coverage/index.html">
+          </head>
+          </html>
+          HTML
 
-      - name: Publish Test Results
-        if: always()
-        uses: actions/upload-test-results@v2
-        with:
-          junit_files: tests-report/junit/*.xml
+      - name: Generate HTML test report
+        run: |
+          xunit-viewer -r $REPORT_DIRECTORY/junit -o $REPORT_DIRECTORY/tests-report.html -n "Tests Report"
 
       - name: Assert coverage threshold
         run: |
@@ -70,9 +87,9 @@ jobs:
           awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
             || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }
 
-      - name: Upload coverage artifacts
+      - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: tests-and-coverage-report
           path: tests-report/
