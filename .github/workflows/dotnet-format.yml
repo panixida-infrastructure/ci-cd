@@ -12,10 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore dotnet local tools
-        working-directory: ${{ inputs.project_folder }}
-        run: dotnet tool restore
+      - name: Install dotnet-format
+        run: |
+          dotnet tool install -g dotnet-format || true
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Run .NET format
         working-directory: ${{ inputs.project_folder }}
-        run: dotnet format --verify-no-changes --severity warn
+        run: |
+          dotnet format --verify-no-changes --severity warn
