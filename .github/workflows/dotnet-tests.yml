@@ -92,4 +92,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tests-and-coverage-report
-          path: tests-report/
+          retention-days: 1
+          path: |
+            tests-report/coverage/
+            tests-report/tests-report.html
+            tests-report/coverage-report.html
