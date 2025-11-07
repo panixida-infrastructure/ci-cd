@@ -1,0 +1,36 @@
+on:
+  workflow_call:
+    inputs:
+      project_folder:
+        type: string
+        default: "."
+      output_folder:
+        type: string
+        default: "./out"
+      dotnet_version:
+        type: string
+        default: "8.0.x"
+    secrets:
+      NUGET_API_KEY:
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Restore
+        run: dotnet restore ${{ inputs.project_folder }}
+
+      - name: Pack
+        run: dotnet pack ${{ inputs.project_folder }} --configuration Release --output ${{ inputs.output_folder }}
+
+      - name: Publish to NuGet.org
+        run: dotnet nuget push "${{ inputs.output_folder }}/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json
