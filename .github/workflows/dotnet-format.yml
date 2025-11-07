@@ -1,29 +1,24 @@
-name: dotnet-format
-
 on:
   workflow_call:
     inputs:
       project_folder:
         type: string
-        required: false
         default: .
 
 jobs:
-  format:
+  run:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dotnet-format
-        shell: bash
         run: |
           dotnet tool install -g dotnet-format || true
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Run .NET format
         working-directory: ${{ inputs.project_folder }}
-        shell: bash
         run: |
           dotnet tool restore
           dotnet format --verify-no-changes
