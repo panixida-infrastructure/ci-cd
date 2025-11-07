@@ -20,5 +20,4 @@ jobs:
       - name: Run .NET format
         working-directory: ${{ inputs.project_folder }}
         run: |
-          dotnet tool restore
-          dotnet format --verify-no-changes
+          dotnet format --verify-no-changes --severity warn
