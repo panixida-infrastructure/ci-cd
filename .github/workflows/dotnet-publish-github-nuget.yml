@@ -15,23 +15,17 @@ on:
         required: true
 
 jobs:
-  run:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main')
+  publish:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: ./.github/actions/dotnet-pack
         with:
-          dotnet-version: ${{ inputs.dotnet_version }}
-
-      - name: Restore
-        run: dotnet restore ${{ inputs.project_folder }}
-
-      - name: Pack
-        run: dotnet pack ${{ inputs.project_folder }} --configuration Release --output ${{ inputs.output_folder }}
+          project_folder: ${{ inputs.project_folder }}
+          output_folder: ${{ inputs.output_folder }}
+          dotnet_version: ${{ inputs.dotnet_version }}
 
       - name: Push to GitHub Packages
         run: |
