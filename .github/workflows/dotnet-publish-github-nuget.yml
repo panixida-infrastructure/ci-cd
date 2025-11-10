@@ -19,10 +19,6 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main')
     runs-on: ubuntu-latest
 
-    permissions:
-      packages: write
-      contents: read
-
     steps:
       - uses: actions/checkout@v4
 
