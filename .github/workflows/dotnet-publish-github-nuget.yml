@@ -1,0 +1,44 @@
+on:
+  workflow_call:
+    inputs:
+      project_folder:
+        type: string
+        default: "."
+      output_folder:
+        type: string
+        default: "./out"
+      dotnet_version:
+        type: string
+        default: "8.0.x"
+    secrets:
+      GH_PACKAGES_TOKEN:
+        required: true
+
+jobs:
+  run:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main')
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Restore
+        run: dotnet restore ${{ inputs.project_folder }}
+
+      - name: Pack
+        run: dotnet pack ${{ inputs.project_folder }} --configuration Release --output ${{ inputs.output_folder }}
+
+      - name: Push to GitHub Packages
+        run: |
+          dotnet nuget push "${{ inputs.output_folder }}/*.nupkg" \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key "${{ secrets.GH_PACKAGES_TOKEN }}"
