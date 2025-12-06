@@ -52,5 +52,5 @@ jobs:
           tags: |
             ${{ inputs.image-tag }}
 
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ github.repository }}
+          cache-to: type=gha,mode=max,scope=${{ github.repository }}
