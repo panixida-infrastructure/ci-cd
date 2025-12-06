@@ -4,7 +4,7 @@ on:
       project-folder:
         type: string
         default: .
-      service-name:
+      service-folder:
         required: true
         type: string
       image-tag:
@@ -33,7 +33,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.project-folder }}
-          file: ${{ inputs.project-folder }}/Dockerfile
+          file: ${{ inputs.project-folder }}/${{ inputs.service-folder }}/Dockerfile
           push: true
 
           tags: |
