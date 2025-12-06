@@ -1,6 +1,9 @@
 on:
   workflow_call:
     inputs:
+      environment:
+        required: true
+        type: string      
       service-folder:
         required: true
         type: string
@@ -20,7 +23,7 @@ jobs:
 
   run:
     needs: resolve-env
-    environment: ${{ needs.resolve-env.outputs.environment }}
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
