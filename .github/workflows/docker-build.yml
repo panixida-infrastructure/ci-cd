@@ -36,7 +36,7 @@ jobs:
 
       - name: Create nuget.config
         env:
-          CI_REGISTRY: ${{ vars.CI_REGISTRY }}
+          REGISTRY_PROVIDER: ${{ vars.REGISTRY_PROVIDER }}
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
