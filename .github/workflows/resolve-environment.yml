@@ -2,7 +2,6 @@ on:
   workflow_call:
     outputs:
       environment:
-        description: "Resolved environment name"
         value: ${{ jobs.resolve.outputs.environment }}
 
 jobs:
@@ -10,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.env.outputs.environment }}
-      env_suffix: ${{ steps.env.outputs.env_suffix }}
 
     steps:
       - id: env

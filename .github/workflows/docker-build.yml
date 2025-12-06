@@ -36,14 +36,7 @@ jobs:
           driver: docker-container
 
       - name: Create nuget.config
-        if: ${{ vars.NUGET_CONFIG != '' }}
-        env:
-          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
-          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
-          REGISTRY_USER: ${{ secrets.registry-user }}
-          REGISTRY_TOKEN: ${{ secrets.registry-token }}
-        run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config
+        uses: PANiXiDA-Infrastructure/ci-cd/.github/actions/create-nuget-config@main
 
       - name: Build and push
         uses: docker/build-push-action@v6
