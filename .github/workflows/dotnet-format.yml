@@ -1,17 +1,32 @@
 on:
   workflow_call:
+    secrets:
+      registry-user:
+        required: true
+      registry-token:
+        required: true    
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 
 
       - name: Install dotnet-format
         run: |
           dotnet tool install -g dotnet-format || true
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Create nuget.config
+        if: ${{ vars.NUGET_CONFIG != '' }}
+        env:
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
+          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
+          REGISTRY_USER: ${{ secrets.registry-user }}
+          REGISTRY_TOKEN: ${{ secrets.registry-token }}
+        run: |
+          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config          
 
       - name: Run .NET format
         working-directory: ${{ vars.PROJECT_FOLDER }}

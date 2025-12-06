@@ -10,7 +10,7 @@ on:
       registry-user:
         required: true
       registry-token:
-        required: true        
+        required: true
 
 jobs:
   run:

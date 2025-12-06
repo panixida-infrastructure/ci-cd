@@ -9,7 +9,7 @@ on:
         type: string
       service-name:
         required: true
-        type: string        
+        type: string
 
     secrets:
       registry-user:
