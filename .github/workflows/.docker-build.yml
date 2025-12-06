@@ -1,0 +1,71 @@
+on:
+  workflow_call:
+    inputs:
+      project-folder:
+        required: true
+        type: string    
+        
+      service-name:
+        required: true
+        type: string
+
+      registry-project-path:
+        required: true
+        type: string
+
+      env-suffix:
+        required: true
+        type: string
+
+    secrets:
+      registry-user:
+        required: true
+      registry-token:
+        required: true
+        
+  push: 
+    branches: 
+    - development 
+    - main  
+jobs:
+  docker_build:
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_build_tag: ${{ steps.vars.outputs.image_build_tag }}
+      image_latest_env: ${{ steps.vars.outputs.image_latest_env }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - id: vars
+        name: Generate image variables
+        run: |
+          echo "SERVICE_NAME=${{ inputs.service-name }}" >> $GITHUB_OUTPUT
+          echo "REGISTRY_PROJECT_PATH=${{ inputs.registry-project-path }}" >> $GITHUB_OUTPUT
+
+          echo "SERVICE_REGISTRY_PATH=${{ vars.CI_REGISTRY }}/${{ inputs.registry-project-path }}/${{ inputs.service-name }}" >> $GITHUB_OUTPUT
+
+          echo "IMAGE_BUILD_TAG=${{ vars.CI_REGISTRY }}/${{ inputs.registry-project-path }}/${{ inputs.service-name }}:${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "IMAGE_LATEST=${{ vars.CI_REGISTRY }}/${{ inputs.registry-project-path }}/${{ inputs.service-name }}:latest" >> $GITHUB_OUTPUT
+
+          echo "IMAGE_LATEST_ENV=${{ vars.CI_REGISTRY }}/${{ inputs.registry-project-path }}/${{ inputs.service-name }}:latest-${{ inputs.env-suffix }}" >> $GITHUB_OUTPUT
+
+      - name: Docker login
+        run: |
+          unset DOCKER_HOST
+          echo "${{ secrets.registry-token }}" | docker login "${{ vars.CI_REGISTRY }}" -u "${{ secrets.registry-user }}" --password-stdin
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.project-folder }}
+          file: ${{ inputs.project-folder }}/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.IMAGE_BUILD_TAG }}
+            ${{ steps.vars.outputs.IMAGE_LATEST_ENV }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
