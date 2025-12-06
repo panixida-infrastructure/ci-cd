@@ -48,7 +48,6 @@ jobs:
 
           set +e
           dotnet test \
-            --no-build \
             --results-directory "$REPORT_DIRECTORY" \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx"
