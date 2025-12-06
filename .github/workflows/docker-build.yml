@@ -36,7 +36,7 @@ jobs:
 
       - name: Create nuget.config
         env:
-          REGISTRY_PROVIDER: ${{ vars.REGISTRY_PROVIDER }}
+          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
