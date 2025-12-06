@@ -57,41 +57,37 @@ jobs:
           echo "Test exit code saved: $TEST_EXIT"
           echo "TEST_EXIT=$TEST_EXIT" >> $GITHUB_ENV
 
-      - name: Install report tools
+      - name: Publish test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests
+          path: ${{ env.REPORT_DIRECTORY }}/**/*.trx
+          reporter: dotnet-trx
+          fail-on-error: "false"          
+
+      - name: Install reportgenerator
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
-          dotnet tool install --global trx2junit
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-          sudo apt-get update
-          sudo apt-get install -y nodejs npm
-          sudo npm i -g xunit-viewer
-
-      - name: Convert trx → junit
-        run: |
-          mkdir -p "$REPORT_DIRECTORY/junit"
-          trx2junit "$REPORT_DIRECTORY/test_results.trx" --output "$REPORT_DIRECTORY/junit"
-
-      - name: Generate coverage report
+      - name: Generate coverage summary (no HTML)
         run: |
           reportgenerator \
             -reports:"**/coverage.cobertura.xml" \
             -targetdir:"$COVERAGE_DIRECTORY" \
-            -reporttypes:"Html;Cobertura;TextSummary" \
+            -reporttypes:"TextSummary;MarkdownSummary" \
             -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
 
-          cat > "$REPORT_DIRECTORY/coverage-report.html" <<'HTML'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta http-equiv="refresh" content="0; url=coverage/index.html">
-          </head>
-          </html>
-          HTML
-
-      - name: Generate HTML test report
+      - name: Add coverage to job summary
+        if: always()
         run: |
-          xunit-viewer -r $REPORT_DIRECTORY/junit -o $REPORT_DIRECTORY/tests-report.html -n "Tests Report"
+          echo "## Coverage" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$COVERAGE_DIRECTORY/Summary.md" ]; then
+            cat "$COVERAGE_DIRECTORY/Summary.md" >> $GITHUB_STEP_SUMMARY
+          else
+            cat "$COVERAGE_DIRECTORY/Summary.txt" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Assert coverage threshold
         run: |
@@ -108,5 +104,4 @@ jobs:
           retention-days: 1
           path: |
             tests-report/coverage/
-            tests-report/tests-report.html
-            tests-report/coverage-report.html
+            tests-report/**/*.trx
