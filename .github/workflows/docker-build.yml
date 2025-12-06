@@ -38,9 +38,18 @@ jobs:
 
       - name: Create nuget.config
         env:
+          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
         run: |
-          printf "%s" "$NUGET_CONFIG" > ${{ inputs.project-folder }}/nuget.config
+          # Заменяем в шаблоне строку ${NUGET_PROVIDER} на реальный URL
+          CONTENT="${NUGET_CONFIG//\$\{NUGET_PROVIDER\}/$NUGET_PROVIDER}"
+
+          printf "%s" "$CONTENT" > ${{ inputs.project-folder }}/nuget.config
+
+          echo "========== GENERATED nuget.config =========="
+          cat ${{ inputs.project-folder }}/nuget.config
+          echo "==========================================="
+
 
       - name: Build and push
         uses: docker/build-push-action@v6
