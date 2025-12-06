@@ -16,6 +16,8 @@ on:
     
 jobs:
   docker_build:
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+
     runs-on: ubuntu-latest
 
     steps:
