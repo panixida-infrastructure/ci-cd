@@ -39,6 +39,7 @@ jobs:
       - name: Create nuget.config
         env:
           NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
+          REGISTRY_USER: ${{ secrets.registry-user }}
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
         run: |
           echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config
