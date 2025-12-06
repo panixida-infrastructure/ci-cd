@@ -15,7 +15,7 @@ on:
         required: true
     
 jobs:
-  docker_build:
+  run:
     environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
 
     runs-on: ubuntu-latest
@@ -51,7 +51,7 @@ jobs:
           push: true
 
           tags: |
-            ${{ vars.CI_REGISTRY }}/${{ github.repository }}/${{ inputs.service-name }}:${{ vars.ENV_SUFFIX }}-${{ github.run_number }}
+            ${{ vars.REGISTRY_URL }}/${{ github.repository }}/${{ inputs.service-name }}:${{ vars.ENV_SUFFIX }}-${{ github.run_number }}
 
           cache-from: type=gha,scope=${{ github.repository }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
