@@ -36,14 +36,9 @@ jobs:
         with:
           driver: docker-container
 
-      - name: Create nuget.config
-        env:
-          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
-          REGISTRY_USER: ${{ secrets.registry-user }}
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
+      - name: Create nuget.config (copy from variable)
         run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config
+          printf "%s" "${{ vars.NUGET_CONFIG }}" > ${{ inputs.project-folder }}/nuget.config
 
       - name: Print nuget.config (DEBUG)
         run: |
