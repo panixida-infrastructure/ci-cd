@@ -21,10 +21,6 @@ jobs:
   docker_build:
     runs-on: ubuntu-latest
 
-    outputs:
-      image_build_tag: ${{ inputs.image-build-tag }}
-      image_latest_env: ${{ inputs.image-latest-env-tag }}
-
     steps:
       - uses: actions/checkout@v4
 
