@@ -16,7 +16,7 @@ on:
     
 jobs:
   run:
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    environment: ${{ github.ref_name == 'main' && 'production' || github.ref_name == 'stage' && 'stage' || github.ref_name == 'testing' && 'test' || 'development' }}
 
     runs-on: ubuntu-latest
 
