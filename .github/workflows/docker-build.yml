@@ -6,13 +6,7 @@ on:
         type: string
       service-name:
         required: true
-        type: string        
-
-    secrets:
-      registry-user:
-        required: true
-      registry-token:
-        required: true
+        type: string
     
 jobs:
   docker_build:
@@ -24,7 +18,7 @@ jobs:
       - name: Docker login
         run: |
           unset DOCKER_HOST
-          echo "${{ secrets.registry-token }}" | docker login "${{ vars.CI_REGISTRY }}" -u "${{ secrets.registry-user }}" --password-stdin
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "${{ vars.CI_REGISTRY }}" -u "${{ secrets.REGISTRY_USER }}" --password-stdin
 
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v3
@@ -36,8 +30,8 @@ jobs:
         env:
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
           NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
-          REGISTRY_USER: ${{ secrets.registry-user }}
-          REGISTRY_TOKEN: ${{ secrets.registry-token }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config
 
