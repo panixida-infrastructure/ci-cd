@@ -18,11 +18,7 @@ on:
         required: true
     
 jobs:
-  resolve-env:
-    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/resolve-environment.yml@main
-
   run:
-    needs: resolve-env
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
