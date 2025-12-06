@@ -35,8 +35,13 @@ jobs:
           driver: docker-container
 
       - name: Create nuget.config
+        env:
+          CI_REGISTRY: ${{ vars.CI_REGISTRY }}
+          REGISTRY_USER: ${{ secrets.registry-user }}
+          REGISTRY_TOKEN: ${{ secrets.registry-token }}
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
         run: |
-          echo "${{ secrets.NUGET_CONFIG }}" > ${{ inputs.project-folder }}/nuget.config          
+          echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config        
 
       - name: Build and push
         uses: docker/build-push-action@v6
