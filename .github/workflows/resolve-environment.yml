@@ -1,0 +1,31 @@
+on:
+  workflow_call:
+    outputs:
+      environment:
+        description: "Resolved environment name"
+        value: ${{ jobs.resolve.outputs.environment }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      env_suffix: ${{ steps.env.outputs.env_suffix }}
+
+    steps:
+      - id: env
+        run: |
+          REF="${{ github.ref_name }}"
+
+          if [[ "$REF" == "main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+
+          elif [[ "$REF" == "stage" ]]; then
+            echo "environment=stage" >> $GITHUB_OUTPUT
+
+          elif [[ "$REF" == "testing" || "$REF" == "test" ]]; then
+            echo "environment=test" >> $GITHUB_OUTPUT
+
+          else
+            echo "environment=development" >> $GITHUB_OUTPUT
+          fi

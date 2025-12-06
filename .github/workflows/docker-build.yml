@@ -15,11 +15,13 @@ on:
         required: true
     
 jobs:
+  resolve-env:
+    uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/resolve-environment.yml@main
+
   run:
-    environment: ${{ github.ref_name == 'main' && 'production' || github.ref_name == 'stage' && 'stage' || github.ref_name == 'testing' && 'test' || 'development' }}
-
+    needs: resolve-env
+    environment: ${{ needs.resolve-env.outputs.environment }}
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
