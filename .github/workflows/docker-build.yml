@@ -17,7 +17,7 @@ on:
       registry-token:
         required: true
       PAT_TOKEN:
-       required: true
+        required: true
     
 jobs:
   docker_build:
@@ -47,7 +47,7 @@ EOF
           echo "========== GENERATED nuget.config =========="
           cat ${{ inputs.project-folder }}/nuget.config
           echo "==========================================="
-        
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
