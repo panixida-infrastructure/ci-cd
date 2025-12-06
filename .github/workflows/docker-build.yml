@@ -32,7 +32,11 @@ jobs:
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          driver: docker-container          
+          driver: docker-container
+
+      - name: Create nuget.config
+        run: |
+          echo "${{ secrets.NUGET_CONFIG }}" > ${{ inputs.project-folder }}/nuget.config          
 
       - name: Build and push
         uses: docker/build-push-action@v6
