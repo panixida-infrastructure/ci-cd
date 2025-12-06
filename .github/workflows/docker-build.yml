@@ -43,8 +43,14 @@ jobs:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
         run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config        
+          echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config
 
+      - name: Print nuget.config (DEBUG)
+        run: |
+          echo "========== GENERATED nuget.config =========="
+          cat ${{ inputs.project-folder }}/nuget.config
+          echo "==========================================="
+          
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
