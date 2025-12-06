@@ -2,7 +2,7 @@ on:
   workflow_call:
     outputs:
       environment:
-        value: ${{ jobs.resolve.outputs.environment }}
+        value: ${{ jobs.run.outputs.environment }}
 
 jobs:
   run:
