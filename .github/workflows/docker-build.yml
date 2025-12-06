@@ -42,12 +42,6 @@ jobs:
           ${{ vars.NUGET_CONFIG }}
           EOF
 
-      - name: Print nuget.config (DEBUG)
-        run: |
-          echo "========== GENERATED nuget.config =========="
-          cat ${{ inputs.project-folder }}/nuget.config
-          echo "==========================================="
-
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
