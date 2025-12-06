@@ -22,11 +22,7 @@ on:
         required: true
       registry-token:
         required: true
-        
-  push: 
-    branches: 
-    - development 
-    - main  
+    
 jobs:
   docker_build:
     runs-on: ubuntu-latest
