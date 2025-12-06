@@ -37,10 +37,11 @@ jobs:
           driver: docker-container
 
       - name: Create nuget.config
+        env:
+          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
         run: |
-          cat << 'EOF' > ${{ inputs.project-folder }}/nuget.config
-          ${{ vars.NUGET_CONFIG }}
-          EOF
+          printf "%s" "$NUGET_CONFIG" | envsubst '$NUGET_PROVIDER' > ${{ inputs.project-folder }}/nuget.config
 
       - name: Build and push
         uses: docker/build-push-action@v6
