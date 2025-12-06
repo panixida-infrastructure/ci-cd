@@ -1,12 +1,12 @@
 on:
   workflow_call:
     secrets:
-      env-file:
-        required: true
       registry-user:
         required: true
       registry-token:
         required: true
+      env-file:
+        required: true        
 
 jobs:
   run:
@@ -46,15 +46,21 @@ jobs:
           driver: docker-container
 
       - name: Build migrator image
-        run: |
-          docker build \
-            --build-arg BUILD_CONFIGURATION=Release \
-            -t migrator-image \
-            -f "${{ vars.MIGRATOR_FOLDER }}/Dockerfile" \
-            "${{ vars.PROJECT_FOLDER }}"
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ vars.PROJECT_FOLDER }}
+          file: ${{ vars.PROJECT_FOLDER }}/${{ vars.MIGRATOR_FOLDER }}/Dockerfile
+          push: false
+          load: true
+
+          tags: |
+            migrator-image
+
+          build-args: |
+            BUILD_CONFIGURATION=Release
 
           cache-from: type=gha,scope=${{ github.repository }}-migrator
-          cache-to: type=gha,mode=max,scope=${{ github.repository }}-migrator            
+          cache-to: type=gha,mode=max,scope=${{ github.repository }}-migrator          
 
       - name: Run migrations
         run: |
