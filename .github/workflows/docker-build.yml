@@ -37,10 +37,12 @@ jobs:
           driver: docker-container
 
       - name: Create nuget.config
+        if: ${{ vars.NUGET_CONFIG != '' }}
         env:
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
           NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
           REGISTRY_USER: ${{ secrets.registry-user }}
-          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
+          REGISTRY_TOKEN: ${{ secrets.registry-token }}
         run: |
           echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config
 
