@@ -39,8 +39,8 @@ jobs:
       - name: Create nuget.config
         run: |
           cat << 'EOF' > ${{ inputs.project-folder }}/nuget.config
-${{ vars.NUGET_CONFIG }}
-EOF
+          ${{ vars.NUGET_CONFIG }}
+          EOF
 
       - name: Print nuget.config (DEBUG)
         run: |
