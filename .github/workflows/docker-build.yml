@@ -29,6 +29,11 @@ jobs:
           unset DOCKER_HOST
           echo "${{ secrets.registry-token }}" | docker login "${{ vars.CI_REGISTRY }}" -u "${{ secrets.registry-user }}" --password-stdin
 
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container          
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
