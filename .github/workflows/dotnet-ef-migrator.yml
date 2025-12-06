@@ -1,0 +1,61 @@
+on:
+  workflow_call:
+    secrets:
+      env-file:
+        required: true
+      registry-user:
+        required: true
+      registry-token:
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create nuget.config
+        if: ${{ vars.NUGET_CONFIG != '' }}
+        env:
+          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
+          REGISTRY_USER: ${{ secrets.registry-user }}
+          REGISTRY_TOKEN: ${{ secrets.registry-token }}
+        run: |
+          echo "${{ vars.NUGET_CONFIG }}" | envsubst > "${{ vars.PROJECT_FOLDER }}/nuget.config"
+
+      - name: Create .env for migrator
+        run: |
+          echo "${{ secrets.env-file }}" > "${{ vars.MIGRATOR_FOLDER }}/.env"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-
+
+      - name: Restore migrator
+        run: |
+          dotnet restore "${{ vars.MIGRATOR_FOLDER }}/${{ vars.MIGRATOR_PROJECT }}"
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Build migrator image
+        run: |
+          docker build \
+            --build-arg BUILD_CONFIGURATION=Release \
+            -t migrator-image \
+            -f "${{ vars.MIGRATOR_FOLDER }}/Dockerfile" \
+            "${{ vars.PROJECT_FOLDER }}"
+
+          cache-from: type=gha,scope=${{ github.repository }}-migrator
+          cache-to: type=gha,mode=max,scope=${{ github.repository }}-migrator            
+
+      - name: Run migrations
+        run: |
+          docker run --rm --env-file "${{ vars.MIGRATOR_FOLDER }}/.env" migrator-image
