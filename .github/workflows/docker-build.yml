@@ -1,22 +1,17 @@
 on:
   workflow_call:
     inputs:
-      project-folder:
-        type: string
-        default: .
       service-folder:
         required: true
         type: string
-      image-tag:
+      service-name:
         required: true
-        type: string
+        type: string        
 
     secrets:
       registry-user:
         required: true
       registry-token:
-        required: true
-      PAT_TOKEN:
         required: true
     
 jobs:
@@ -44,17 +39,17 @@ jobs:
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
         run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config
+          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ${{ inputs.project-folder }}
-          file: ${{ inputs.project-folder }}/${{ inputs.service-folder }}/Dockerfile
+          context: ${{ vars.PROJECT_FOLDER }}
+          file: ${{ vars.PROJECT_FOLDER }}/${{ inputs.service-folder }}/Dockerfile
           push: true
 
           tags: |
-            ${{ inputs.image-tag }}
+            ${{ vars.CI_REGISTRY }}/${{ github.repository }}/${{ inputs.service-name }}:${{ github.run_number }}
 
           cache-from: type=gha,scope=${{ github.repository }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
