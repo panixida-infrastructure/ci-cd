@@ -36,16 +36,18 @@ jobs:
         with:
           driver: docker-container
 
-      - name: Create nuget.config (copy from variable)
+      - name: Create nuget.config
         run: |
-          printf "%s" "${{ vars.NUGET_CONFIG }}" > ${{ inputs.project-folder }}/nuget.config
+          cat << 'EOF' > ${{ inputs.project-folder }}/nuget.config
+${{ vars.NUGET_CONFIG }}
+EOF
 
       - name: Print nuget.config (DEBUG)
         run: |
           echo "========== GENERATED nuget.config =========="
           cat ${{ inputs.project-folder }}/nuget.config
           echo "==========================================="
-          
+        
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
