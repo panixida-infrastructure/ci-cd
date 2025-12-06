@@ -1,5 +1,15 @@
-.update_database: 
+.update_database:
+  environment:
+    name: $DEPLOY_ENV  
   script:
-    - dotnet build "$MIGRATOR_FOLDER/$MIGRATOR_PROJECT" -c Release
-    - cd "$MIGRATOR_FOLDER"
-    - dotnet run -c Release --no-build
+    - apt-get update
+    - apt-get install -y docker.io
+
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+
+    - ENV_FILE=$(eval echo \$env${CONTUR_NAME}_${ENV_SUFFIX})
+    - cp "$ENV_FILE" "$MIGRATOR_FOLDER/.env"
+
+    - dotnet restore "$MIGRATOR_FOLDER/$MIGRATOR_PROJECT"
+    - docker build --build-arg BUILD_CONFIGURATION=Release -t migrator-image -f "$MIGRATOR_FOLDER/Dockerfile" .
+    - docker run --rm --env-file "$MIGRATOR_FOLDER/.env" migrator-image
