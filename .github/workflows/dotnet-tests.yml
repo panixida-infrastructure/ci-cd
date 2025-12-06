@@ -1,11 +1,5 @@
 on:
   workflow_call:
-    inputs:
-      coverage_assembly_filters:
-        type: string
-      coverage_threshold:
-        type: string
-
     secrets:
       registry-user:
         required: true
@@ -19,11 +13,17 @@ jobs:
     env:
       REPORT_DIRECTORY: tests-report
       COVERAGE_DIRECTORY: tests-report/coverage
-      COVERAGE_ASSEMBLY_FILTERS: ${{ inputs.coverage_assembly_filters }}
-      COVERAGE_THRESHOLD: ${{ inputs.coverage_threshold }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-   
 
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
@@ -33,7 +33,7 @@ jobs:
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
         run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config      
+          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config       
 
       - name: dotnet restore
         working-directory: ${{ vars.PROJECT_FOLDER }}
@@ -48,6 +48,7 @@ jobs:
 
           set +e
           dotnet test \
+            --no-build \
             --results-directory "$REPORT_DIRECTORY" \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx"
@@ -71,37 +72,23 @@ jobs:
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      - name: Generate coverage summary (no HTML)
+      - name: Generate coverage summary
         run: |
           reportgenerator \
             -reports:"**/coverage.cobertura.xml" \
             -targetdir:"$COVERAGE_DIRECTORY" \
-            -reporttypes:"TextSummary;MarkdownSummary" \
-            -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
+            -reporttypes:"MarkdownSummary" \
+            -assemblyfilters:"${{ vars.COVERAGE_ASSEMBLY_FILTERS }}"
 
       - name: Add coverage to job summary
         if: always()
         run: |
           echo "## Coverage" >> $GITHUB_STEP_SUMMARY
-          if [ -f "$COVERAGE_DIRECTORY/Summary.md" ]; then
-            cat "$COVERAGE_DIRECTORY/Summary.md" >> $GITHUB_STEP_SUMMARY
-          else
-            cat "$COVERAGE_DIRECTORY/Summary.txt" >> $GITHUB_STEP_SUMMARY
-          fi
+          cat "$COVERAGE_DIRECTORY/Summary.md" >> $GITHUB_STEP_SUMMARY
 
       - name: Assert coverage threshold
         run: |
           LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
-          echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
-          awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
-            || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }
-
-      - name: Upload build artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tests-and-coverage-report
-          retention-days: 1
-          path: |
-            tests-report/coverage/
-            tests-report/**/*.trx
+          echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${{ vars.COVERAGE_THRESHOLD }}%)"
+          awk -v c="$LINE_COVERAGE" -v t="${{ vars.COVERAGE_THRESHOLD }}" 'BEGIN{exit (c+0<t+0)}' \
+            || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${{ vars.COVERAGE_THRESHOLD }}%"; exit 1; }
