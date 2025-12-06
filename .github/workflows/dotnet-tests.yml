@@ -1,13 +1,16 @@
 on:
   workflow_call:
     inputs:
-      project_folder:
-        type: string
-        default: .
       coverage_assembly_filters:
         type: string
       coverage_threshold:
         type: string
+
+    secrets:
+      registry-user:
+        required: true
+      registry-token:
+        required: true        
 
 jobs:
   run:
@@ -22,13 +25,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create nuget.config
+        if: ${{ vars.NUGET_CONFIG != '' }}
+        env:
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
+          NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
+          REGISTRY_USER: ${{ secrets.registry-user }}
+          REGISTRY_TOKEN: ${{ secrets.registry-token }}
+        run: |
+          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config      
+
       - name: dotnet restore
-        working-directory: ${{ inputs.project_folder }}
+        working-directory: ${{ vars.PROJECT_FOLDER }}
         run: |
           dotnet restore
 
       - name: Run tests with coverage
-        working-directory: ${{ inputs.project_folder }}
+        working-directory: ${{ vars.PROJECT_FOLDER }}
         run: |
           set -eo pipefail
           mkdir -p "$REPORT_DIRECTORY"
