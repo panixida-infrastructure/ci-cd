@@ -16,6 +16,8 @@ on:
         required: true
       registry-token:
         required: true
+      PAT_TOKEN:
+       required: true
     
 jobs:
   docker_build:
@@ -38,7 +40,7 @@ jobs:
         env:
           NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
           REGISTRY_USER: ${{ secrets.registry-user }}
-          REGISTRY_TOKEN: ${{ secrets.registry-token }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
           NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
         run: |
           echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config        
