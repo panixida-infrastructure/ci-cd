@@ -1,14 +1,11 @@
 on:
   workflow_call:
-    inputs:
-      environment:
-        required: true
-        type: string      
+    inputs:   
       service-folder:
         required: true
         type: string
-      service-name:
-        required: true
+      image:
+        required: true        
         type: string
 
     secrets:
@@ -19,7 +16,6 @@ on:
     
 jobs:
   run:
-    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +48,7 @@ jobs:
           push: true
 
           tags: |
-            ${{ vars.REGISTRY_URL }}/${{ github.repository }}/${{ inputs.service-name }}:${{ vars.ENV_SUFFIX }}-${{ github.run_number }}
+            ${{ inputs.image }}
 
           cache-from: type=gha,scope=${{ github.repository }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
