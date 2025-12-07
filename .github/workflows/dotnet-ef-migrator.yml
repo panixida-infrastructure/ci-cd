@@ -6,7 +6,7 @@ on:
       registry-token:
         required: true
       env-file:
-        required: true        
+        required: true
 
 jobs:
   run:

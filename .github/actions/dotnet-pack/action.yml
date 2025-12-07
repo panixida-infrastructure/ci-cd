@@ -1,5 +1,5 @@
-name: dotnet-pack
-description: "Restore, build and pack .NET project"
+name: Dotnet Pack
+description: Restore, build and pack .NET project
 inputs:
   project_folder:
     required: true
