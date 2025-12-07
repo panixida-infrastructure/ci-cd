@@ -1,5 +1,6 @@
 name: Dotnet EF Migrator
 description: Build and run EF migrator docker image
+
 inputs:
   registry-user:
     required: true
@@ -7,6 +8,16 @@ inputs:
     required: true
   env-file:
     required: true
+  project-folder:
+    required: true
+  migrator-folder:
+    required: true
+  migrator-project:
+    required: true
+  nuget-config:
+    required: false
+  nuget-provider:
+    required: false
 
 runs:
   using: "composite"
@@ -14,33 +25,32 @@ runs:
     - uses: actions/checkout@v4
 
     - name: Create nuget.config
-      if: ${{ vars.NUGET_CONFIG != '' }}
+      if: ${{ inputs.nuget-config != '' }}
       shell: bash
       env:
-        NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
-        NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
+        NUGET_CONFIG: ${{ inputs.nuget-config }}
+        NUGET_PROVIDER: ${{ inputs.nuget-provider }}
         REGISTRY_USER: ${{ inputs.registry-user }}
         REGISTRY_TOKEN: ${{ inputs.registry-token }}
       run: |
-        echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config
+        echo "$NUGET_CONFIG" | envsubst > ${{ inputs.project-folder }}/nuget.config
 
     - name: Create .env for migrator
       shell: bash
       run: |
-        echo "${{ inputs.env-file }}" > "${{ vars.MIGRATOR_FOLDER }}/.env"
+        echo "${{ inputs.env-file }}" > "${{ inputs.migrator-folder }}/.env"
 
     - name: Cache NuGet packages
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
         key: nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: |
-          nuget-
+        restore-keys: nuget-
 
     - name: Restore migrator
       shell: bash
       run: |
-        dotnet restore "${{ vars.MIGRATOR_FOLDER }}/${{ vars.MIGRATOR_PROJECT }}"
+        dotnet restore "${{ inputs.migrator-folder }}/${{ inputs.migrator-project }}"
 
     - name: Setup Buildx
       uses: docker/setup-buildx-action@v3
@@ -50,18 +60,18 @@ runs:
     - name: Build migrator image
       uses: docker/build-push-action@v6
       with:
-        context: ${{ vars.PROJECT_FOLDER }}
-        file: ${{ vars.PROJECT_FOLDER }}/${{ vars.MIGRATOR_FOLDER }}/Dockerfile
+        context: ${{ inputs.project-folder }}
+        file: ${{ inputs.project-folder }}/${{ inputs.migrator-folder }}/Dockerfile
         push: false
         load: true
         tags: migrator-image
         build-args: |
           BUILD_CONFIGURATION=Release
-         
+
         cache-from: type=gha,scope=${{ github.repository }}-migrator
         cache-to: type=gha,mode=max,scope=${{ github.repository }}-migrator
 
     - name: Run migrations
       shell: bash
       run: |
-        docker run --rm --env-file "${{ vars.MIGRATOR_FOLDER }}/.env" migrator-image
+        docker run --rm --env-file "${{ inputs.migrator-folder }}/.env" migrator-image
