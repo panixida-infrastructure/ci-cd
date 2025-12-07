@@ -79,18 +79,31 @@ jobs:
 
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           REPO="${GITHUB_REPOSITORY#*/}"
+          SHA="${GITHUB_SHA}"
 
-          # Получаем последний замерженный PR, т.к. merge-коммит НЕ принадлежит PR,
-          # а endpoint commits/{sha}/pulls возвращает пустой массив.
-          PR=$(curl -s \
+          PR_DATA=$(curl -s \
             -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$OWNER/$REPO/pulls?state=closed&sort=updated&direction=desc" \
-            | jq 'map(select(.merged_at != null)) | .[0]')
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$OWNER/$REPO/commits/$SHA/pulls")
 
-          PR_TITLE=$(echo "$PR" | jq -r '.title // empty')
-          PR_AUTHOR=$(echo "$PR" | jq -r '.user.login // empty')
-          PR_URL=$(echo "$PR" | jq -r '.html_url // empty')
-          MERGED_BY=$(echo "$PR" | jq -r '.merged_by.login // empty')
+          PR_NUMBER=$(echo "$PR_DATA" | jq -r '.[0].number // empty')
+
+          PR_TITLE=""
+          PR_AUTHOR=""
+          PR_URL=""
+          MERGED_BY=""
+
+          if [ -n "$PR_NUMBER" ]; then
+            PR=$(curl -s \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$OWNER/$REPO/pulls/$PR_NUMBER")
+
+            PR_TITLE=$(echo "$PR" | jq -r '.title // empty')
+            PR_AUTHOR=$(echo "$PR" | jq -r '.user.login // empty')
+            PR_URL=$(echo "$PR" | jq -r '.html_url // empty')
+            MERGED_BY=$(echo "$PR" | jq -r '.merged_by.login // empty')
+          fi
 
           AUTHOR_BLOCK=""
           if [ -n "$PR_AUTHOR" ]; then
@@ -112,13 +125,13 @@ jobs:
             echo "author_block<<EOF"
             echo -e "$AUTHOR_BLOCK"
             echo "EOF"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
           {
             echo "pr_line<<EOF"
             echo -e "$PR_LINE"
             echo "EOF"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: Send Telegram notification
         shell: bash
