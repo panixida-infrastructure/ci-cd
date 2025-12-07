@@ -36,10 +36,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$OWNER/$REPO/actions/runs/$RUN_ID/jobs?per_page=100")
 
-          FAILED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="failure") | .name' | paste -sd ', \n ' -)
-          SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="success") | .name' | paste -sd ', \n ' -)
-          CANCELED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="cancelled") | .name' | paste -sd ', \n ' -)
-          SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="skipped") | .name' | paste -sd ', \n ' -)
+            SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="success") | "- \(.name)"' | tr '\n' '\n')
+            FAILED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="failure") | "- \(.name)"')
+            CANCELED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="cancelled") | "- \(.name)"')
+            SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="skipped") | "- \(.name)"')
 
           DETAILS=""
           if [ -n "$SUCCESSFUL_JOBS" ]; then
