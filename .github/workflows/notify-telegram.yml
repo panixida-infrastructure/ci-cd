@@ -79,16 +79,18 @@ jobs:
 
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           REPO="${GITHUB_REPOSITORY#*/}"
-          SHA="${GITHUB_SHA}"
 
-          PR_DATA=$(curl -s \
+          # Получаем последний замерженный PR, т.к. merge-коммит НЕ принадлежит PR,
+          # а endpoint commits/{sha}/pulls возвращает пустой массив.
+          PR=$(curl -s \
             -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$OWNER/$REPO/commits/$SHA/pulls")
+            "https://api.github.com/repos/$OWNER/$REPO/pulls?state=closed&sort=updated&direction=desc" \
+            | jq 'map(select(.merged_at != null)) | .[0]')
 
-          PR_TITLE=$(echo "$PR_DATA" | jq -r '.[0].title // empty')
-          PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.[0].user.login // empty')
-          PR_URL=$(echo "$PR_DATA" | jq -r '.[0].html_url // empty')
-          MERGED_BY=$(echo "$PR_DATA" | jq -r '.[0].merged_by.login // empty')
+          PR_TITLE=$(echo "$PR" | jq -r '.title // empty')
+          PR_AUTHOR=$(echo "$PR" | jq -r '.user.login // empty')
+          PR_URL=$(echo "$PR" | jq -r '.html_url // empty')
+          MERGED_BY=$(echo "$PR" | jq -r '.merged_by.login // empty')
 
           AUTHOR_BLOCK=""
           if [ -n "$PR_AUTHOR" ]; then
