@@ -72,19 +72,34 @@ runs:
         scp -i "$SSH_KEY_PATH" -P "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no app.env "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ inputs.service-folder }}/.env"
         rm -f app.env
 
-    - name: Deploy container
-      shell: bash
-      run: |
-        set -euo pipefail
-        ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no "${{ inputs.server-user }}@${{ inputs.server-host }}" "
+  - name: Docker deploy
+    shell: bash
+    run: |
+      set -euo pipefail
+      ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
+        "${{ inputs.server-user }}@${{ inputs.server-host }}" "
           cd '${{ inputs.service-folder }}';
+
           docker login -u '${{ inputs.registry-user }}' -p '${{ inputs.registry-token }}' '${{ inputs.registry-url }}';
+
           docker pull '${{ inputs.image }}';
           docker container rm -f '${{ inputs.container-name }}' || true;
-          docker run -d -i --name '${{ inputs.container-name }}' --env-file ./.env --network='${{ inputs.docker-network }}' --memory='${{ inputs.docker-memory }}' --restart=always --volume '${{ inputs.service-folder }}/files:/app/files' ${{ inputs.extra-docker-args }} '${{ inputs.image }}';
+
+          docker network inspect '${{ inputs.docker-network }}' >/dev/null 2>&1 || \
+            docker network create '${{ inputs.docker-network }}';
+
+          docker run -d -i \
+            --name '${{ inputs.container-name }}' \
+            --env-file ./.env \
+            --network='${{ inputs.docker-network }}' \
+            --memory='${{ inputs.docker-memory }}' \
+            --restart=always \
+            --volume '${{ inputs.service-folder }}/files:/app/files' \
+            ${{ inputs.extra-docker-args }} \
+            '${{ inputs.image }}';
 
           docker image prune -f;
-          docker system prune -f;          
+          docker system prune -f;
         "
 
     - name: Cleanup SSH key
