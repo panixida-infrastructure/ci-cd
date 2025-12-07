@@ -43,6 +43,7 @@ runs:
   using: "composite"
   steps:
     - name: Prepare SSH key
+      id: prepare-key
       shell: bash
       env:
         SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
@@ -51,7 +52,8 @@ runs:
         umask 077
         echo "$SSH_PRIVATE_KEY" > ssh_key
         chmod 600 ssh_key
-        echo "SSH_KEY_PATH=$PWD/ssh_key" >> "$GITHUB_ENV"
+        SSH_KEY_PATH="$(pwd)/ssh_key"
+        echo "ssh-key-path=$SSH_KEY_PATH" >> "$GITHUB_OUTPUT"
 
     - name: Create env file
       shell: bash
@@ -76,11 +78,15 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        SSH_KEY_PATH="${{ steps.prepare-key.outputs.ssh-key-path }}"
+
         ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
           "${{ inputs.server-user }}@${{ inputs.server-host }}" "
             cd '${{ inputs.service-folder }}';
 
-            docker login -u '${{ inputs.registry-user }}' -p '${{ inputs.registry-token }}' '${{ inputs.registry-url }}';
+            echo '${{ inputs.registry-token }}' | docker login '${{ inputs.registry-url }}' \
+              --username '${{ inputs.registry-user }}' \
+              --password-stdin;
 
             docker pull '${{ inputs.image }}';
             docker container rm -f '${{ inputs.container-name }}' || true;
