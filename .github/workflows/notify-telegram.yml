@@ -1,0 +1,124 @@
+on:
+  workflow_call:
+    secrets:
+      telegram-bot-token:
+        required: true
+      telegram-chat-id:
+        required: true
+      github-token:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install deps
+        shell: bash
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl
+
+      - name: Collect jobs info
+        id: collect
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.github-token }}
+        run: |
+          set -euo pipefail
+          
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          RUN_ID="${GITHUB_RUN_ID}"
+
+          JOBS=$(curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$OWNER/$REPO/actions/runs/$RUN_ID/jobs?per_page=100")
+
+          FAILED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="failure") | .name' | paste -sd ', \n ' -)
+          SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="success") | .name' | paste -sd ', \n ' -)
+          CANCELED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="cancelled") | .name' | paste -sd ', \n ' -)
+          SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="skipped") | .name' | paste -sd ', \n ' -)
+
+          DETAILS=""
+          if [ -n "$SUCCESSFUL_JOBS" ]; then
+            DETAILS="${DETAILS} \n ✅ *Успешные задачи:* \n ${SUCCESSFUL_JOBS} \n "
+          fi
+          if [ -n "$FAILED_JOBS" ]; then
+            DETAILS="${DETAILS} \n ❌ *Неуспешные задачи:* \n ${FAILED_JOBS} \n "
+          fi
+          if [ -n "$CANCELED_JOBS" ]; then
+            DETAILS="${DETAILS} \n 🚫 *Отменённые задачи:* \n ${CANCELED_JOBS} \n "
+          fi
+          if [ -n "$SKIPPED_JOBS" ]; then
+            DETAILS="${DETAILS} \n ⏭️ *Пропущенные задачи:* \n ${SKIPPED_JOBS} \n "
+          fi
+
+          if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
+            STATUS="✅ Workflow *${RUN_ID}* завершился *успешно*."
+          else
+            STATUS="❌ Workflow *${RUN_ID}* завершился с *ошибками*."
+          fi
+
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "details=$DETAILS" >> $GITHUB_OUTPUT
+
+      - name: Collect PR info
+        id: pr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.github-token }}
+        run: |
+          set -euo pipefail
+
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          SHA="${GITHUB_SHA}"
+
+          PR_DATA=$(curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$OWNER/$REPO/commits/$SHA/pulls")
+
+          PR_TITLE=$(echo "$PR_DATA" | jq -r '.[0].title // empty')
+          PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.[0].user.login // empty')
+          PR_URL=$(echo "$PR_DATA" | jq -r '.[0].html_url // empty')
+          MERGED_BY=$(echo "$PR_DATA" | jq -r '.[0].merged_by.login // empty')
+
+          AUTHOR_BLOCK=""
+          if [ -n "$PR_AUTHOR" ]; then
+            AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Автор PR: *${PR_AUTHOR}*"
+          fi
+          if [ -n "$MERGED_BY" ]; then
+            AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Замержил: *${MERGED_BY}*"
+          fi
+          if [ -z "$AUTHOR_BLOCK" ]; then
+            AUTHOR_BLOCK="\n- Инициатор: *${GITHUB_ACTOR}*"
+          fi
+
+          PR_LINE=""
+          if [ -n "$PR_TITLE" ] && [ -n "$PR_URL" ]; then
+            PR_LINE="\n- PR: [${PR_TITLE}](${PR_URL})"
+          fi
+
+          echo "author_block=$AUTHOR_BLOCK" >> $GITHUB_OUTPUT
+          echo "pr_line=$PR_LINE" >> $GITHUB_OUTPUT
+
+      - name: Send Telegram notification
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.telegram-bot-token }}
+          TELEGRAM_CHAT_ID: ${{ secrets.telegram-chat-id }}
+          STATUS: ${{ steps.collect.outputs.status }}
+          DETAILS: ${{ steps.collect.outputs.details }}
+          AUTHOR_BLOCK: ${{ steps.pr.outputs.author_block }}
+          PR_LINE: ${{ steps.pr.outputs.pr_line }}
+          PROJECT: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          TEXT="$STATUS \n${DETAILS} 📝 *Информация о сборке:* \n- Проект: *${PROJECT}* \n- Ветка: *${BRANCH}*${AUTHOR_BLOCK}${PR_LINE}"
+
+          curl -s --header 'Content-Type: application/json' \
+            --request POST \
+            --data "{\"chat_id\":\"$TELEGRAM_CHAT_ID\", \"text\":\"$TEXT\", \"parse_mode\":\"Markdown\"}" \
+            "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+
