@@ -109,7 +109,7 @@ runs:
               ${{ inputs.extra-docker-args }} \
               '${{ inputs.image }}';
 
-            docker image prune -f;
+            docker image prune -a -f;
           "
 
     - name: Cleanup SSH key
