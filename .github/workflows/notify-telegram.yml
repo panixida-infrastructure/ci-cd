@@ -36,10 +36,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$OWNER/$REPO/actions/runs/$RUN_ID/jobs?per_page=100")
 
-            SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="success") | "- \(.name)"' | tr '\n' '\n')
-            FAILED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="failure") | "- \(.name)"')
-            CANCELED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="cancelled") | "- \(.name)"')
-            SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="skipped") | "- \(.name)"')
+          SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="success") | "- \(.name)"' | tr '\n' '\n')
+          FAILED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="failure") | "- \(.name)"')
+          CANCELED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="cancelled") | "- \(.name)"')
+          SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="skipped") | "- \(.name)"')
 
           DETAILS=""
           if [ -n "$SUCCESSFUL_JOBS" ]; then
@@ -79,45 +79,46 @@ jobs:
 
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           REPO="${GITHUB_REPOSITORY#*/}"
-          SHA="${GITHUB_SHA}"
-
-          PR_DATA=$(curl -s \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$OWNER/$REPO/commits/$SHA/pulls")
-
-          PR_NUMBER=$(echo "$PR_DATA" | jq -r '.[0].number // empty')
 
           PR_TITLE=""
           PR_AUTHOR=""
           PR_URL=""
           MERGED_BY=""
 
-          if [ -n "$PR_NUMBER" ]; then
-            PR=$(curl -s \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$OWNER/$REPO/pulls/$PR_NUMBER")
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            EVENT_PATH="${GITHUB_EVENT_PATH}"
+            PR_NUMBER=$(jq -r '.pull_request.number // empty' "$EVENT_PATH")
 
-            PR_TITLE=$(echo "$PR" | jq -r '.title // empty')
-            PR_AUTHOR=$(echo "$PR" | jq -r '.user.login // empty')
-            PR_URL=$(echo "$PR" | jq -r '.html_url // empty')
-            MERGED_BY=$(echo "$PR" | jq -r '.merged_by.login // empty')
+            if [ -n "$PR_NUMBER" ]; then
+              PR=$(curl -s \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$OWNER/$REPO/pulls/$PR_NUMBER")
+
+              PR_TITLE=$(echo "$PR" | jq -r '.title // empty')
+              PR_AUTHOR=$(echo "$PR" | jq -r '.user.login // empty')
+              PR_URL=$(echo "$PR" | jq -r '.html_url // empty')
+              MERGED_BY=$(echo "$PR" | jq -r '.merged_by.login // empty')
+            fi
           fi
 
           AUTHOR_BLOCK=""
-          if [ -n "$PR_AUTHOR" ]; then
-            AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Автор PR: *${PR_AUTHOR}*"
-          fi
-          if [ -n "$MERGED_BY" ]; then
-            AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Замержил: *${MERGED_BY}*"
-          fi
-          if [ -z "$AUTHOR_BLOCK" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ -n "$PR_AUTHOR" ]; then
+              AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Автор PR: *${PR_AUTHOR}*"
+            fi
+            if [ -n "$MERGED_BY" ]; then
+              AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Замержил: *${MERGED_BY}*"
+            fi
+            if [ -z "$AUTHOR_BLOCK" ]; then
+              AUTHOR_BLOCK="\n- Инициатор: *${GITHUB_ACTOR}*"
+            fi
+          else
             AUTHOR_BLOCK="\n- Инициатор: *${GITHUB_ACTOR}*"
           fi
 
           PR_LINE=""
-          if [ -n "$PR_TITLE" ] && [ -n "$PR_URL" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$PR_TITLE" ] && [ -n "$PR_URL" ]; then
             PR_LINE="\n- PR: [${PR_TITLE}](${PR_URL})"
           fi
 
