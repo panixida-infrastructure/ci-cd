@@ -11,6 +11,7 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+
     steps:
       - name: Install deps
         shell: bash
@@ -42,16 +43,16 @@ jobs:
 
           DETAILS=""
           if [ -n "$SUCCESSFUL_JOBS" ]; then
-            DETAILS="${DETAILS} \n ✅ *Успешные задачи:* \n ${SUCCESSFUL_JOBS} \n "
+            DETAILS="${DETAILS} \n ✅ *Успешные задачи:* \n ${SUCCESSFUL_JOBS}"
           fi
           if [ -n "$FAILED_JOBS" ]; then
-            DETAILS="${DETAILS} \n ❌ *Неуспешные задачи:* \n ${FAILED_JOBS} \n "
+            DETAILS="${DETAILS} \n ❌ *Неуспешные задачи:* \n ${FAILED_JOBS}"
           fi
           if [ -n "$CANCELED_JOBS" ]; then
-            DETAILS="${DETAILS} \n 🚫 *Отменённые задачи:* \n ${CANCELED_JOBS} \n "
+            DETAILS="${DETAILS} \n 🚫 *Отменённые задачи:* \n ${CANCELED_JOBS}"
           fi
           if [ -n "$SKIPPED_JOBS" ]; then
-            DETAILS="${DETAILS} \n ⏭️ *Пропущенные задачи:* \n ${SKIPPED_JOBS} \n "
+            DETAILS="${DETAILS} \n ⏭️ *Пропущенные задачи:* \n ${SKIPPED_JOBS}"
           fi
 
           if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
@@ -61,7 +62,12 @@ jobs:
           fi
 
           echo "status=$STATUS" >> $GITHUB_OUTPUT
-          echo "details=$DETAILS" >> $GITHUB_OUTPUT
+
+          {
+            echo "details<<EOF"
+            echo -e "$DETAILS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Collect PR info
         id: pr
@@ -100,8 +106,17 @@ jobs:
             PR_LINE="\n- PR: [${PR_TITLE}](${PR_URL})"
           fi
 
-          echo "author_block=$AUTHOR_BLOCK" >> $GITHUB_OUTPUT
-          echo "pr_line=$PR_LINE" >> $GITHUB_OUTPUT
+          {
+            echo "author_block<<EOF"
+            echo -e "$AUTHOR_BLOCK"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo "pr_line<<EOF"
+            echo -e "$PR_LINE"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Send Telegram notification
         shell: bash
@@ -115,10 +130,9 @@ jobs:
           PROJECT: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          TEXT="$STATUS \n${DETAILS} 📝 *Информация о сборке:* \n- Проект: *${PROJECT}* \n- Ветка: *${BRANCH}*${AUTHOR_BLOCK}${PR_LINE}"
+          TEXT="$STATUS \n${DETAILS} \n📝 *Информация о сборке:* \n- Проект: *${PROJECT}* \n- Ветка: *${BRANCH}*${AUTHOR_BLOCK}${PR_LINE}"
 
           curl -s --header 'Content-Type: application/json' \
             --request POST \
             --data "{\"chat_id\":\"$TELEGRAM_CHAT_ID\", \"text\":\"$TEXT\", \"parse_mode\":\"Markdown\"}" \
             "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
-
