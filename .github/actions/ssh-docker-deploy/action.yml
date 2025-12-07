@@ -42,6 +42,7 @@ inputs:
 runs:
   using: "composite"
   steps:
+
     - name: Prepare SSH key
       id: prepare-key
       shell: bash
@@ -52,8 +53,7 @@ runs:
         umask 077
         echo "$SSH_PRIVATE_KEY" > ssh_key
         chmod 600 ssh_key
-        SSH_KEY_PATH="$(pwd)/ssh_key"
-        echo "ssh-key-path=$SSH_KEY_PATH" >> "$GITHUB_OUTPUT"
+        echo "path=$(pwd)/ssh_key" >> "$GITHUB_OUTPUT"
 
     - name: Create env file
       shell: bash
@@ -65,20 +65,25 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no "${{ inputs.server-user }}@${{ inputs.server-host }}" "mkdir -p '${{ inputs.service-folder }}'; cd '${{ inputs.service-folder }}'; touch .env"
+        SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
+        ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
+          "${{ inputs.server-user }}@${{ inputs.server-host }}" \
+          "mkdir -p '${{ inputs.service-folder }}'; cd '${{ inputs.service-folder }}'; touch .env"
 
     - name: Upload env file
       shell: bash
       run: |
         set -euo pipefail
-        scp -i "$SSH_KEY_PATH" -P "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no app.env "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ inputs.service-folder }}/.env"
+        SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
+        scp -i "$SSH_KEY_PATH" -P "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
+          app.env "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ inputs.service-folder }}/.env"
         rm -f app.env
 
     - name: Docker deploy
       shell: bash
       run: |
         set -euo pipefail
-        SSH_KEY_PATH="${{ steps.prepare-key.outputs.ssh-key-path }}"
+        SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
 
         ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
           "${{ inputs.server-user }}@${{ inputs.server-host }}" "
@@ -112,4 +117,5 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
         rm -f "$SSH_KEY_PATH" || true
