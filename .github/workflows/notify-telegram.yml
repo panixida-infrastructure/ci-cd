@@ -13,7 +13,7 @@ on:
         required: true
 
 jobs:
-  notify:
+  run:
     runs-on: ubuntu-latest
 
     steps:
