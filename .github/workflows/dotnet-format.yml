@@ -12,11 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dotnet-format
-        run: |
-          dotnet tool install -g dotnet-format || true
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
         env:
