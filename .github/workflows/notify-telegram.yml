@@ -17,12 +17,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install deps
-        shell: bash
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq curl
-
       - name: Collect jobs info
         id: collect
         shell: bash

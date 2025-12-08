@@ -40,18 +40,6 @@ runs:
       run: |
         echo "${{ inputs.env-file }}" > "${{ inputs.migrator-folder }}/.env"
 
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: ~/.nuget/packages
-        key: nuget-${{ hashFiles('**/*.csproj') }}
-        restore-keys: nuget-
-
-    - name: Restore migrator
-      shell: bash
-      run: |
-        dotnet restore "${{ inputs.migrator-folder }}/${{ inputs.migrator-project }}"
-
     - name: Setup Buildx
       uses: docker/setup-buildx-action@v3
       with:

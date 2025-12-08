@@ -33,7 +33,7 @@ jobs:
           path: ~/.nuget/packages
           key: nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            nuget-   
+            nuget-
 
       - name: dotnet restore
         working-directory: ${{ vars.PROJECT_FOLDER }}
@@ -48,14 +48,17 @@ jobs:
 
           set +e
           dotnet test \
+            --no-restore \
             --results-directory "$REPORT_DIRECTORY" \
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test_results.trx"
           TEST_EXIT=$?
           set -e
 
-          echo "Test exit code saved: $TEST_EXIT"
-          echo "TEST_EXIT=$TEST_EXIT" >> $GITHUB_ENV
+          if [ "$TEST_EXIT" -ne 0 ]; then
+            echo "Tests failed with exit code $TEST_EXIT"
+            exit $TEST_EXIT
+          fi
 
       - name: Publish test results
         if: always()
@@ -76,7 +79,7 @@ jobs:
           reportgenerator \
             -reports:"**/coverage.cobertura.xml" \
             -targetdir:"$COVERAGE_DIRECTORY" \
-            -reporttypes:"MarkdownSummary" \
+            -reporttypes:"MarkdownSummary;TextSummary" \
             -assemblyfilters:"${{ vars.COVERAGE_ASSEMBLY_FILTERS }}"
 
       - name: Add coverage to job summary

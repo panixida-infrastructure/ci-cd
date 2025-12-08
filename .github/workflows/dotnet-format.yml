@@ -4,14 +4,13 @@ on:
       registry-user:
         required: true
       registry-token:
-        required: true    
+        required: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4 
+      - uses: actions/checkout@v4
 
       - name: Install dotnet-format
         run: |
@@ -21,14 +20,27 @@ jobs:
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
         env:
-          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
           NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
         run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config          
+          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-
+
+      - name: Restore .NET solution
+        working-directory: ${{ vars.PROJECT_FOLDER }}
+        run: |
+          dotnet restore
 
       - name: Run .NET format
         working-directory: ${{ vars.PROJECT_FOLDER }}
         run: |
-          dotnet format --verify-no-changes --severity warn
+          dotnet format --verify-no-changes --severity warn --no-restore
