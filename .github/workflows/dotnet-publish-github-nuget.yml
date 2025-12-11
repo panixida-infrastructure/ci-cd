@@ -9,7 +9,7 @@ on:
         default: "./out"
       dotnet_version:
         type: string
-        default: "8.0.x"
+        default: "10.0.x"
     secrets:
       GH_PACKAGES_TOKEN:
         required: true
