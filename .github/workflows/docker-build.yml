@@ -10,7 +10,7 @@ on:
       environment:
         required: false
         type: string
-        default: ""        
+        default: ""
 
     secrets:
       registry-user:

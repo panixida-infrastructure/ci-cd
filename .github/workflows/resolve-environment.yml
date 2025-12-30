@@ -3,27 +3,35 @@ on:
     outputs:
       environment:
         value: ${{ jobs.run.outputs.environment }}
+      environment_pascal:
+        value: ${{ jobs.run.outputs.environment_pascal }}
 
 jobs:
   run:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.env.outputs.environment }}
+      environment_pascal: ${{ steps.env.outputs.environment_pascal }}
 
     steps:
       - id: env
+        shell: bash
         run: |
           REF="${{ github.ref_name }}"
 
           if [[ "$REF" == "main" ]]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "environment_pascal=Production" >> "$GITHUB_OUTPUT"
 
           elif [[ "$REF" == "stage" ]]; then
-            echo "environment=stage" >> $GITHUB_OUTPUT
+            echo "environment=stage" >> "$GITHUB_OUTPUT"
+            echo "environment_pascal=Staging" >> "$GITHUB_OUTPUT"
 
           elif [[ "$REF" == "testing" || "$REF" == "test" ]]; then
-            echo "environment=test" >> $GITHUB_OUTPUT
+            echo "environment=test" >> "$GITHUB_OUTPUT"
+            echo "environment_pascal=Test" >> "$GITHUB_OUTPUT"
 
           else
-            echo "environment=development" >> $GITHUB_OUTPUT
+            echo "environment=development" >> "$GITHUB_OUTPUT"
+            echo "environment_pascal=Development" >> "$GITHUB_OUTPUT"
           fi
