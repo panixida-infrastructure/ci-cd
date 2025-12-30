@@ -7,6 +7,10 @@ on:
       image:
         required: true        
         type: string
+      environment:
+        required: false
+        type: string
+        default: ""        
 
     secrets:
       registry-user:
@@ -49,6 +53,9 @@ jobs:
 
           tags: |
             ${{ inputs.image }}
+
+          build-args: |
+            ENVIRONMENT=${{ inputs.environment }}            
 
           cache-from: type=gha,scope=${{ github.repository }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
