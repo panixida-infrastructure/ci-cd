@@ -17,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0      
 
       - uses: PANiXiDA-Infrastructure/ci-cd/.github/actions/dotnet-pack@main
         with:
