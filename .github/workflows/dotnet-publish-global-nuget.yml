@@ -7,9 +7,6 @@ on:
       output_folder:
         type: string
         default: "./out"
-      dotnet_version:
-        type: string
-        default: "8.0.x"
     secrets:
       NUGET_API_KEY:
         required: true
@@ -25,10 +22,10 @@ jobs:
         with:
           project_folder: ${{ inputs.project_folder }}
           output_folder: ${{ inputs.output_folder }}
-          dotnet_version: ${{ inputs.dotnet_version }}
 
       - name: Publish to NuGet.org
         run: |
           dotnet nuget push "${{ inputs.output_folder }}/*.nupkg" \
             --source "https://api.nuget.org/v3/index.json" \
             --api-key "${{ secrets.NUGET_API_KEY }}"
+  
