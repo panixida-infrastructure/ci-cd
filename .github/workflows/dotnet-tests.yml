@@ -15,7 +15,7 @@ jobs:
       COVERAGE_DIRECTORY: tests-report/coverage
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -35,7 +35,7 @@ jobs:
           echo "$NUGET_CONFIG" | envsubst > "${{ vars.PROJECT_FOLDER }}/nuget.config"
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/global.json', '**/packages.lock.json') }}
