@@ -64,7 +64,7 @@ jobs:
 
       - name: Publish test results
         if: ${{ always() && hashFiles('tests-report/**/*.trx') != '' }}
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: Tests
           path: tests-report/**/*.trx
