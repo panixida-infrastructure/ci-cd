@@ -1,24 +1,23 @@
 name: Dotnet Pack
 description: Restore, build and pack .NET project
+
 inputs:
   project_folder:
     required: true
   output_folder:
     required: true
-  dotnet_version:
-    required: true
 
 runs:
   using: composite
   steps:
-    - uses: actions/setup-dotnet@v4
+    - uses: actions/setup-dotnet@v5
       with:
-        dotnet-version: ${{ inputs.dotnet_version }}
+        global-json-file: ./global.json
 
     - name: Restore
       run: dotnet restore ${{ inputs.project_folder }}
       shell: bash
 
     - name: Pack
-      run: dotnet pack ${{ inputs.project_folder }} --configuration Release --output ${{ inputs.output_folder }}
+      run: dotnet pack ${{ inputs.project_folder }} --configuration Release --output ${{ inputs.output_folder }} --no-restore
       shell: bash
