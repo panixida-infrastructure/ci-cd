@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -30,7 +32,7 @@ jobs:
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
         run: |
-          echo "$NUGET_CONFIG" | envsubst > ${{ vars.PROJECT_FOLDER }}/nuget.config
+          echo "$NUGET_CONFIG" | envsubst > "${{ vars.PROJECT_FOLDER }}/nuget.config"
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -61,20 +63,22 @@ jobs:
             --report-trx-filename test_results.trx
 
       - name: Publish test results
-        if: always()
+        if: ${{ always() && hashFiles('tests-report/**/*.trx') != '' }}
         uses: dorny/test-reporter@v1
         with:
           name: Tests
-          path: ${{ env.REPORT_DIRECTORY }}/**/*.trx
+          path: tests-report/**/*.trx
           reporter: dotnet-trx
           fail-on-error: "false"
 
       - name: Install reportgenerator
+        if: ${{ always() && hashFiles('tests-report/**/coverage.cobertura.xml', 'tests-report/coverage.cobertura.xml') != '' }}
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Generate coverage summary
+        if: ${{ always() && hashFiles('tests-report/**/coverage.cobertura.xml', 'tests-report/coverage.cobertura.xml') != '' }}
         run: |
           reportgenerator \
             -reports:"${{ env.REPORT_DIRECTORY }}/**/coverage.cobertura.xml;${{ env.REPORT_DIRECTORY }}/coverage.cobertura.xml" \
@@ -83,12 +87,13 @@ jobs:
             -assemblyfilters:"${{ vars.COVERAGE_ASSEMBLY_FILTERS }}"
 
       - name: Add coverage to job summary
-        if: always()
+        if: ${{ always() && hashFiles('tests-report/coverage/Summary.md') != '' }}
         run: |
           echo "## Coverage" >> $GITHUB_STEP_SUMMARY
           cat "$COVERAGE_DIRECTORY/Summary.md" >> $GITHUB_STEP_SUMMARY
 
       - name: Assert coverage threshold
+        if: ${{ always() && hashFiles('tests-report/coverage/Summary.txt') != '' }}
         run: |
           LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
           echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${{ vars.COVERAGE_THRESHOLD }}%)"
