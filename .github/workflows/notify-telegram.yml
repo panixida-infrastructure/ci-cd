@@ -24,48 +24,43 @@ jobs:
           GH_TOKEN: ${{ secrets.github-token }}
         run: |
           set -euo pipefail
-          
+
+          write_multiline_output() {
+            local name="$1"
+            local value="${2-}"
+
+            {
+              echo "${name}<<EOF"
+              printf '%s\n' "$value"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          }
+
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           REPO="${GITHUB_REPOSITORY#*/}"
           RUN_ID="${GITHUB_RUN_ID}"
 
-          JOBS=$(curl -s \
+          JOBS_JSON=$(curl --fail-with-body -sS \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$OWNER/$REPO/actions/runs/$RUN_ID/jobs?per_page=100")
 
-          SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="success") | "- \(.name)"' | tr '\n' '\n')
-          FAILED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="failure") | "- \(.name)"')
-          CANCELED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="cancelled") | "- \(.name)"')
-          SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.jobs[] | select(.conclusion=="skipped") | "- \(.name)"')
-
-          DETAILS=""
-          if [ -n "$SUCCESSFUL_JOBS" ]; then
-            DETAILS="${DETAILS} \n ✅ *Успешные задачи:* \n ${SUCCESSFUL_JOBS}"
-          fi
-          if [ -n "$FAILED_JOBS" ]; then
-            DETAILS="${DETAILS} \n ❌ *Неуспешные задачи:* \n ${FAILED_JOBS}"
-          fi
-          if [ -n "$CANCELED_JOBS" ]; then
-            DETAILS="${DETAILS} \n 🚫 *Отменённые задачи:* \n ${CANCELED_JOBS}"
-          fi
-          if [ -n "$SKIPPED_JOBS" ]; then
-            DETAILS="${DETAILS} \n ⏭️ *Пропущенные задачи:* \n ${SKIPPED_JOBS}"
-          fi
+          SUCCESSFUL_JOBS=$(echo "$JOBS_JSON" | jq -r '[.jobs[]? | select(.conclusion == "success") | "• " + .name] | join("\n")')
+          FAILED_JOBS=$(echo "$JOBS_JSON" | jq -r '[.jobs[]? | select(.conclusion == "failure") | "• " + .name] | join("\n")')
+          CANCELED_JOBS=$(echo "$JOBS_JSON" | jq -r '[.jobs[]? | select(.conclusion == "cancelled") | "• " + .name] | join("\n")')
+          SKIPPED_JOBS=$(echo "$JOBS_JSON" | jq -r '[.jobs[]? | select(.conclusion == "skipped") | "• " + .name] | join("\n")')
 
           if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
-            STATUS="✅ Workflow *${RUN_ID}* завершился *успешно*."
+            STATUS_TEXT="✅ Workflow ${RUN_ID} завершился успешно."
           else
-            STATUS="❌ Workflow *${RUN_ID}* завершился с *ошибками*."
+            STATUS_TEXT="❌ Workflow ${RUN_ID} завершился с ошибками."
           fi
 
-          echo "status=$STATUS" >> $GITHUB_OUTPUT
-
-          {
-            echo "details<<EOF"
-            echo -e "$DETAILS"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          write_multiline_output "status_text" "$STATUS_TEXT"
+          write_multiline_output "successful_jobs" "$SUCCESSFUL_JOBS"
+          write_multiline_output "failed_jobs" "$FAILED_JOBS"
+          write_multiline_output "canceled_jobs" "$CANCELED_JOBS"
+          write_multiline_output "skipped_jobs" "$SKIPPED_JOBS"
 
       - name: Collect PR info
         id: pr
@@ -76,6 +71,17 @@ jobs:
         run: |
           set -euo pipefail
 
+          write_multiline_output() {
+            local name="$1"
+            local value="${2-}"
+
+            {
+              echo "${name}<<EOF"
+              printf '%s\n' "$value"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          }
+
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           REPO="${GITHUB_REPOSITORY#*/}"
           SHA="${GITHUB_SHA}"
@@ -85,9 +91,10 @@ jobs:
           PR_AUTHOR=""
           PR_URL=""
           MERGED_BY=""
+          INITIATOR="${GITHUB_ACTOR}"
 
           if [ "$EVENT_NAME" = "push" ]; then
-            PR_DATA=$(curl -s \
+            PR_DATA=$(curl --fail-with-body -sS \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$OWNER/$REPO/commits/$SHA/pulls")
@@ -95,64 +102,122 @@ jobs:
             PR_NUMBER=$(echo "$PR_DATA" | jq -r '.[0].number // empty')
 
             if [ -n "$PR_NUMBER" ]; then
-              PR=$(curl -s \
+              PR_JSON=$(curl --fail-with-body -sS \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
                 "https://api.github.com/repos/$OWNER/$REPO/pulls/$PR_NUMBER")
 
-              MERGED_AT=$(echo "$PR" | jq -r '.merged_at // empty')
+              MERGED_AT=$(echo "$PR_JSON" | jq -r '.merged_at // empty')
+
               if [ -n "$MERGED_AT" ]; then
-                PR_TITLE=$(echo "$PR" | jq -r '.title // empty')
-                PR_AUTHOR=$(echo "$PR" | jq -r '.user.login // empty')
-                PR_URL=$(echo "$PR" | jq -r '.html_url // empty')
-                MERGED_BY=$(echo "$PR" | jq -r '.merged_by.login // empty')
+                PR_TITLE=$(echo "$PR_JSON" | jq -r '.title // empty')
+                PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.user.login // empty')
+                PR_URL=$(echo "$PR_JSON" | jq -r '.html_url // empty')
+                MERGED_BY=$(echo "$PR_JSON" | jq -r '.merged_by.login // empty')
               fi
             fi
           fi
 
-          AUTHOR_BLOCK=""
-          if [ -n "$PR_AUTHOR" ]; then
-            AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Автор PR: *${PR_AUTHOR}*"
-          fi
-          if [ -n "$MERGED_BY" ]; then
-            AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Замержил: *${MERGED_BY}*"
-          fi
-          if [ -z "$AUTHOR_BLOCK" ]; then
-            AUTHOR_BLOCK="\n- Инициатор: *${GITHUB_ACTOR}*"
-          fi
-
-          PR_LINE=""
-          if [ -n "$PR_TITLE" ] && [ -n "$PR_URL" ]; then
-            PR_LINE="\n- PR: [${PR_TITLE}](${PR_URL})"
-          fi
-
-          {
-            echo "author_block<<EOF"
-            echo -e "$AUTHOR_BLOCK"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "pr_line<<EOF"
-            echo -e "$PR_LINE"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          write_multiline_output "pr_title" "$PR_TITLE"
+          write_multiline_output "pr_author" "$PR_AUTHOR"
+          write_multiline_output "pr_url" "$PR_URL"
+          write_multiline_output "merged_by" "$MERGED_BY"
+          write_multiline_output "initiator" "$INITIATOR"
 
       - name: Send Telegram notification
         shell: bash
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.telegram-bot-token }}
           TELEGRAM_CHAT_ID: ${{ secrets.telegram-chat-id }}
-          STATUS: ${{ steps.collect.outputs.status }}
-          DETAILS: ${{ steps.collect.outputs.details }}
-          AUTHOR_BLOCK: ${{ steps.pr.outputs.author_block }}
-          PR_LINE: ${{ steps.pr.outputs.pr_line }}
+          STATUS_TEXT: ${{ steps.collect.outputs.status_text }}
+          SUCCESSFUL_JOBS: ${{ steps.collect.outputs.successful_jobs }}
+          FAILED_JOBS: ${{ steps.collect.outputs.failed_jobs }}
+          CANCELED_JOBS: ${{ steps.collect.outputs.canceled_jobs }}
+          SKIPPED_JOBS: ${{ steps.collect.outputs.skipped_jobs }}
+          PR_TITLE: ${{ steps.pr.outputs.pr_title }}
+          PR_AUTHOR: ${{ steps.pr.outputs.pr_author }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          MERGED_BY: ${{ steps.pr.outputs.merged_by }}
+          INITIATOR: ${{ steps.pr.outputs.initiator }}
           PROJECT: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          TEXT="$STATUS \n${DETAILS} \n📝 *Информация о сборке:* \n- Проект: *${PROJECT}* \n- Ветка: *${BRANCH}*${AUTHOR_BLOCK}${PR_LINE}"
+          set -euo pipefail
 
-          curl -s --header 'Content-Type: application/json' \
+          escape_html() {
+            local value="${1-}"
+            value="${value//&/&amp;}"
+            value="${value//</&lt;}"
+            value="${value//>/&gt;}"
+            printf '%s' "$value"
+          }
+
+          escape_html_attr() {
+            local value="${1-}"
+            value="${value//&/&amp;}"
+            value="${value//\"/&quot;}"
+            value="${value//</&lt;}"
+            value="${value//>/&gt;}"
+            printf '%s' "$value"
+          }
+
+          append_section() {
+            local title="$1"
+            local content="${2-}"
+
+            if [ -n "$content" ]; then
+              MESSAGE="${MESSAGE}\n\n<b>${title}</b>\n$(escape_html "$content")"
+            fi
+          }
+
+          STATUS_TEXT_ESCAPED=$(escape_html "$STATUS_TEXT")
+          PROJECT_ESCAPED=$(escape_html "$PROJECT")
+          BRANCH_ESCAPED=$(escape_html "$BRANCH")
+          PR_AUTHOR_ESCAPED=$(escape_html "$PR_AUTHOR")
+          MERGED_BY_ESCAPED=$(escape_html "$MERGED_BY")
+          INITIATOR_ESCAPED=$(escape_html "$INITIATOR")
+          PR_TITLE_ESCAPED=$(escape_html "$PR_TITLE")
+          PR_URL_ESCAPED=$(escape_html_attr "$PR_URL")
+
+          MESSAGE="<b>${STATUS_TEXT_ESCAPED}</b>"
+
+          append_section "Успешные задачи:" "$SUCCESSFUL_JOBS"
+          append_section "Неуспешные задачи:" "$FAILED_JOBS"
+          append_section "Отменённые задачи:" "$CANCELED_JOBS"
+          append_section "Пропущенные задачи:" "$SKIPPED_JOBS"
+
+          MESSAGE="${MESSAGE}\n\n<b>Информация о сборке:</b>"
+          MESSAGE="${MESSAGE}\n- Проект: <b>${PROJECT_ESCAPED}</b>"
+          MESSAGE="${MESSAGE}\n- Ветка: <b>${BRANCH_ESCAPED}</b>"
+
+          if [ -n "$PR_AUTHOR" ]; then
+            MESSAGE="${MESSAGE}\n- Автор PR: <b>${PR_AUTHOR_ESCAPED}</b>"
+          fi
+
+          if [ -n "$MERGED_BY" ]; then
+            MESSAGE="${MESSAGE}\n- Замержил: <b>${MERGED_BY_ESCAPED}</b>"
+          fi
+
+          if [ -z "$PR_AUTHOR" ] && [ -z "$MERGED_BY" ]; then
+            MESSAGE="${MESSAGE}\n- Инициатор: <b>${INITIATOR_ESCAPED}</b>"
+          fi
+
+          if [ -n "$PR_TITLE" ] && [ -n "$PR_URL" ]; then
+            MESSAGE="${MESSAGE}\n- PR: <a href=\"${PR_URL_ESCAPED}\">${PR_TITLE_ESCAPED}</a>"
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg chat_id "$TELEGRAM_CHAT_ID" \
+            --arg text "$MESSAGE" \
+            '{
+              chat_id: $chat_id,
+              text: $text,
+              parse_mode: "HTML",
+              disable_web_page_preview: true
+            }')
+
+          curl --fail-with-body -sS \
+            --header 'Content-Type: application/json' \
             --request POST \
-            --data "{\"chat_id\":\"$TELEGRAM_CHAT_ID\", \"text\":\"$TEXT\", \"parse_mode\":\"Markdown\"}" \
-            "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+            --data "$PAYLOAD" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
