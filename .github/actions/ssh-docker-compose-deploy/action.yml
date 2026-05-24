@@ -13,6 +13,9 @@ inputs:
 
   service-folder:
     required: true
+  deploy-root:
+    required: false
+    default: /opt
 
   compose-file:
     required: true
@@ -31,7 +34,29 @@ runs:
   using: "composite"
   steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
+
+    - name: Resolve deploy folder
+      id: deploy-folder
+      shell: bash
+      env:
+        DEPLOY_ROOT: ${{ inputs.deploy-root }}
+        SERVICE_FOLDER: ${{ inputs.service-folder }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$DEPLOY_ROOT" ]; then
+          echo "deploy-root must not be empty" >&2
+          exit 1
+        fi
+
+        SERVICE_FOLDER="${SERVICE_FOLDER#/}"
+        if [ -z "$SERVICE_FOLDER" ]; then
+          echo "service-folder must not be empty" >&2
+          exit 1
+        fi
+
+        echo "path=${DEPLOY_ROOT%/}/$SERVICE_FOLDER" >> "$GITHUB_OUTPUT"
 
     - name: Prepare SSH key
       id: prepare-key
@@ -58,7 +83,7 @@ runs:
         SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
         ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
           "${{ inputs.server-user }}@${{ inputs.server-host }}" \
-          "mkdir -p '${{ inputs.service-folder }}'"
+          "mkdir -p '${{ steps.deploy-folder.outputs.path }}'"
 
     - name: Upload docker-compose.yml
       shell: bash
@@ -67,7 +92,7 @@ runs:
         SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
         scp -i "$SSH_KEY_PATH" -P "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
           "${{ inputs.compose-file }}" \
-          "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ inputs.service-folder }}/docker-compose.yml"
+          "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ steps.deploy-folder.outputs.path }}/docker-compose.yml"
 
     - name: Upload env file
       shell: bash
@@ -76,7 +101,7 @@ runs:
         SSH_KEY_PATH="${{ steps.prepare-key.outputs.path }}"
         scp -i "$SSH_KEY_PATH" -P "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
           app.env \
-          "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ inputs.service-folder }}/.env"
+          "${{ inputs.server-user }}@${{ inputs.server-host }}:${{ steps.deploy-folder.outputs.path }}/.env"
         rm -f app.env
 
     - name: Docker compose deploy
@@ -88,7 +113,7 @@ runs:
         ssh -i "$SSH_KEY_PATH" -p "${{ inputs.ssh-port }}" -o StrictHostKeyChecking=no \
           "${{ inputs.server-user }}@${{ inputs.server-host }}" "
             set -euo pipefail
-            cd '${{ inputs.service-folder }}';
+            cd '${{ steps.deploy-folder.outputs.path }}';
 
             echo '${{ inputs.registry-token }}' | docker login '${{ inputs.registry-url }}' \
               --username '${{ inputs.registry-user }}' \

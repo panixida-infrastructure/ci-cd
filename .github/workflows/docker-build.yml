@@ -1,11 +1,11 @@
 on:
   workflow_call:
-    inputs:   
+    inputs:
       service-folder:
         required: true
         type: string
       image:
-        required: true        
+        required: true
         type: string
       environment:
         required: false
@@ -17,12 +17,12 @@ on:
         required: true
       registry-token:
         required: true
-    
+
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Docker login
         run: |
@@ -37,7 +37,7 @@ jobs:
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
         env:
-          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}          
+          NUGET_CONFIG: ${{ vars.NUGET_CONFIG }}
           NUGET_PROVIDER: ${{ vars.NUGET_PROVIDER }}
           REGISTRY_USER: ${{ secrets.registry-user }}
           REGISTRY_TOKEN: ${{ secrets.registry-token }}
@@ -55,7 +55,7 @@ jobs:
             ${{ inputs.image }}
 
           build-args: |
-            ENVIRONMENT=${{ inputs.environment }}            
+            ENVIRONMENT=${{ inputs.environment }}
 
           cache-from: type=gha,scope=${{ github.repository }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}
