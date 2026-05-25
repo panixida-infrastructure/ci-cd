@@ -119,9 +119,9 @@ runs:
               --username '${{ inputs.registry-user }}' \
               --password-stdin;
 
-            docker compose down || true;
+            docker compose down --remove-orphans || true;
 
-            docker compose up -d --pull always;
+            docker compose up -d --pull always --remove-orphans;
 
             docker image prune -a -f;
           "
