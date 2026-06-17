@@ -62,7 +62,7 @@ jobs:
             mkdir -p "$TEST_PROJECT_REPORT_DIRECTORY"
 
             dotnet test \
-              --project "$TEST_PROJECT" \
+              "$TEST_PROJECT" \
               --no-restore \
               --results-directory "$TEST_PROJECT_REPORT_DIRECTORY" \
               --coverage \
