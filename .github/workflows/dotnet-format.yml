@@ -12,11 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: ./global.json
-
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
         env:
@@ -31,9 +26,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/global.json', '**/packages.lock.json') }}
+          key: nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            nuget-${{ runner.os }}-
+            nuget-
 
       - name: Restore .NET solution
         working-directory: ${{ vars.PROJECT_FOLDER }}
