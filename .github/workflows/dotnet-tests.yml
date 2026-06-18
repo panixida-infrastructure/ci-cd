@@ -13,6 +13,7 @@ jobs:
     env:
       REPORT_DIRECTORY: tests-report
       COVERAGE_DIRECTORY: tests-report/coverage
+      COVERAGE_EXCLUDED_TEST_PROJECTS: ${{ vars.COVERAGE_EXCLUDED_TEST_PROJECTS }}
 
     steps:
       - uses: actions/checkout@v6
@@ -56,20 +57,41 @@ jobs:
           mapfile -t TEST_PROJECTS < <(find . -name '*Tests.csproj' | sort)
           TEST_EXIT_CODE=0
 
+          should_collect_coverage() {
+            local test_project="$1"
+            local pattern
+
+            for pattern in $COVERAGE_EXCLUDED_TEST_PROJECTS; do
+              if [[ "$test_project" == $pattern ]]; then
+                return 1
+              fi
+            done
+
+            return 0
+          }
+
           for TEST_PROJECT in "${TEST_PROJECTS[@]}"; do
             TEST_PROJECT_NAME="$(basename "$TEST_PROJECT" .csproj)"
             TEST_PROJECT_REPORT_DIRECTORY="$REPORT_DIRECTORY/$TEST_PROJECT_NAME"
             mkdir -p "$TEST_PROJECT_REPORT_DIRECTORY"
 
-            dotnet test \
-              --project "$TEST_PROJECT" \
-              --no-restore \
-              --results-directory "$TEST_PROJECT_REPORT_DIRECTORY" \
-              --coverage \
-              --coverage-output-format cobertura \
-              --coverage-output coverage.cobertura.xml \
-              --report-trx \
-              --report-trx-filename test_results.trx || TEST_EXIT_CODE=$?
+            TEST_ARGS=(
+              --project "$TEST_PROJECT"
+              --no-restore
+              --results-directory "$TEST_PROJECT_REPORT_DIRECTORY"
+              --report-trx
+              --report-trx-filename test_results.trx
+            )
+
+            if should_collect_coverage "$TEST_PROJECT"; then
+              TEST_ARGS+=(
+                --coverage
+                --coverage-output-format cobertura
+                --coverage-output coverage.cobertura.xml
+              )
+            fi
+
+            dotnet test "${TEST_ARGS[@]}" || TEST_EXIT_CODE=$?
           done
 
           exit "$TEST_EXIT_CODE"
