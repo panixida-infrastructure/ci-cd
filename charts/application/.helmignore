@@ -1,0 +1,9 @@
+# Patterns to ignore when building packages.
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+*.tmp
+*.bak
+*.orig
