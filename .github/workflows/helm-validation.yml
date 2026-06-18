@@ -4,10 +4,26 @@ on:
       helm-chart-path:
         required: true
         type: string
+      values-path:
+        required: false
+        type: string
+        default: ""
+      chart-repository:
+        required: false
+        type: string
+        default: ""
+      chart-ref:
+        required: false
+        type: string
+        default: main
       helm-version:
         required: false
         type: string
         default: v4.2.2
+      common-values-file:
+        required: false
+        type: string
+        default: ""
       development-values-file:
         required: false
         type: string
@@ -16,6 +32,10 @@ on:
         required: false
         type: string
         default: images-development.yaml
+      development-release-name:
+        required: false
+        type: string
+        default: ""
       production-values-file:
         required: false
         type: string
@@ -24,12 +44,28 @@ on:
         required: false
         type: string
         default: images-production.yaml
+      production-release-name:
+        required: false
+        type: string
+        default: ""
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout values repository
+        uses: actions/checkout@v6
+        with:
+          path: values
+
+      - name: Checkout chart repository
+        if: ${{ inputs.chart-repository != '' }}
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.chart-repository }}
+          ref: ${{ inputs.chart-ref }}
+          path: chart
+          persist-credentials: false
 
       - name: Install Helm
         run: |
@@ -38,9 +74,18 @@ jobs:
           chmod 700 get_helm.sh
           DESIRED_VERSION="${{ inputs.helm-version }}" ./get_helm.sh
 
-      - name: Validate Helm chart path
+      - name: Resolve Helm inputs
         env:
+          CHART_REPOSITORY: ${{ inputs.chart-repository }}
           HELM_CHART_PATH: ${{ inputs.helm-chart-path }}
+          VALUES_PATH_INPUT: ${{ inputs.values-path }}
+          COMMON_VALUES_FILE: ${{ inputs.common-values-file }}
+          DEVELOPMENT_VALUES_FILE: ${{ inputs.development-values-file }}
+          DEVELOPMENT_IMAGES_FILE: ${{ inputs.development-images-file }}
+          PRODUCTION_VALUES_FILE: ${{ inputs.production-values-file }}
+          PRODUCTION_IMAGES_FILE: ${{ inputs.production-images-file }}
+          DEVELOPMENT_RELEASE_NAME: ${{ inputs.development-release-name }}
+          PRODUCTION_RELEASE_NAME: ${{ inputs.production-release-name }}
         run: |
           set -euo pipefail
 
@@ -49,33 +94,102 @@ jobs:
             exit 1
           fi
 
-          if [ ! -f "${HELM_CHART_PATH}/Chart.yaml" ]; then
-            echo "::error::Chart.yaml was not found in ${HELM_CHART_PATH}"
+          CHART_ROOT="values"
+          if [ -n "${CHART_REPOSITORY:-}" ]; then
+            CHART_ROOT="chart"
+          fi
+
+          VALUES_SUBPATH="${VALUES_PATH_INPUT:-$HELM_CHART_PATH}"
+          CHART_PATH="${CHART_ROOT}/${HELM_CHART_PATH}"
+          VALUES_PATH="values/${VALUES_SUBPATH}"
+
+          if [ ! -f "${CHART_PATH}/Chart.yaml" ]; then
+            echo "::error::Chart.yaml was not found in ${CHART_PATH}"
             exit 1
           fi
 
+          require_values_file() {
+            local file="$1"
+            if [ ! -f "$file" ]; then
+              echo "::error::Helm values file was not found: $file"
+              exit 1
+            fi
+          }
+
+          if [ -n "${COMMON_VALUES_FILE:-}" ]; then
+            require_values_file "${VALUES_PATH}/${COMMON_VALUES_FILE}"
+          fi
+          require_values_file "${VALUES_PATH}/${DEVELOPMENT_VALUES_FILE}"
+          require_values_file "${VALUES_PATH}/${DEVELOPMENT_IMAGES_FILE}"
+          require_values_file "${VALUES_PATH}/${PRODUCTION_VALUES_FILE}"
+          require_values_file "${VALUES_PATH}/${PRODUCTION_IMAGES_FILE}"
+
+          DEVELOPMENT_RELEASE="${DEVELOPMENT_RELEASE_NAME:-${GITHUB_REPOSITORY##*/}-development}"
+          PRODUCTION_RELEASE="${PRODUCTION_RELEASE_NAME:-${GITHUB_REPOSITORY##*/}-production}"
+
+          {
+            echo "CHART_PATH=${CHART_PATH}"
+            echo "VALUES_PATH=${VALUES_PATH}"
+            echo "DEVELOPMENT_RELEASE=${DEVELOPMENT_RELEASE}"
+            echo "PRODUCTION_RELEASE=${PRODUCTION_RELEASE}"
+          } >> "$GITHUB_ENV"
+
       - name: Lint Helm chart
         env:
-          HELM_CHART_PATH: ${{ inputs.helm-chart-path }}
+          COMMON_VALUES_FILE: ${{ inputs.common-values-file }}
+          DEVELOPMENT_VALUES_FILE: ${{ inputs.development-values-file }}
+          DEVELOPMENT_IMAGES_FILE: ${{ inputs.development-images-file }}
+          PRODUCTION_VALUES_FILE: ${{ inputs.production-values-file }}
+          PRODUCTION_IMAGES_FILE: ${{ inputs.production-images-file }}
         run: |
           set -euo pipefail
-          helm lint "${HELM_CHART_PATH}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.development-values-file }}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.development-images-file }}"
-          helm lint "${HELM_CHART_PATH}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.production-values-file }}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.production-images-file }}"
+
+          DEVELOPMENT_ARGS=()
+          PRODUCTION_ARGS=()
+
+          if [ -n "${COMMON_VALUES_FILE:-}" ]; then
+            DEVELOPMENT_ARGS+=(-f "${VALUES_PATH}/${COMMON_VALUES_FILE}")
+            PRODUCTION_ARGS+=(-f "${VALUES_PATH}/${COMMON_VALUES_FILE}")
+          fi
+
+          DEVELOPMENT_ARGS+=(
+            -f "${VALUES_PATH}/${DEVELOPMENT_VALUES_FILE}"
+            -f "${VALUES_PATH}/${DEVELOPMENT_IMAGES_FILE}"
+          )
+          PRODUCTION_ARGS+=(
+            -f "${VALUES_PATH}/${PRODUCTION_VALUES_FILE}"
+            -f "${VALUES_PATH}/${PRODUCTION_IMAGES_FILE}"
+          )
+
+          helm lint "${CHART_PATH}" "${DEVELOPMENT_ARGS[@]}"
+          helm lint "${CHART_PATH}" "${PRODUCTION_ARGS[@]}"
 
       - name: Render Helm chart
         env:
-          HELM_CHART_PATH: ${{ inputs.helm-chart-path }}
+          COMMON_VALUES_FILE: ${{ inputs.common-values-file }}
+          DEVELOPMENT_VALUES_FILE: ${{ inputs.development-values-file }}
+          DEVELOPMENT_IMAGES_FILE: ${{ inputs.development-images-file }}
+          PRODUCTION_VALUES_FILE: ${{ inputs.production-values-file }}
+          PRODUCTION_IMAGES_FILE: ${{ inputs.production-images-file }}
         run: |
           set -euo pipefail
-          helm template "${GITHUB_REPOSITORY##*/}-development" "${HELM_CHART_PATH}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.development-values-file }}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.development-images-file }}" \
-            >/tmp/helm-development.yaml
-          helm template "${GITHUB_REPOSITORY##*/}-production" "${HELM_CHART_PATH}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.production-values-file }}" \
-            -f "${HELM_CHART_PATH}/${{ inputs.production-images-file }}" \
-            >/tmp/helm-production.yaml
+
+          DEVELOPMENT_ARGS=()
+          PRODUCTION_ARGS=()
+
+          if [ -n "${COMMON_VALUES_FILE:-}" ]; then
+            DEVELOPMENT_ARGS+=(-f "${VALUES_PATH}/${COMMON_VALUES_FILE}")
+            PRODUCTION_ARGS+=(-f "${VALUES_PATH}/${COMMON_VALUES_FILE}")
+          fi
+
+          DEVELOPMENT_ARGS+=(
+            -f "${VALUES_PATH}/${DEVELOPMENT_VALUES_FILE}"
+            -f "${VALUES_PATH}/${DEVELOPMENT_IMAGES_FILE}"
+          )
+          PRODUCTION_ARGS+=(
+            -f "${VALUES_PATH}/${PRODUCTION_VALUES_FILE}"
+            -f "${VALUES_PATH}/${PRODUCTION_IMAGES_FILE}"
+          )
+
+          helm template "${DEVELOPMENT_RELEASE}" "${CHART_PATH}" "${DEVELOPMENT_ARGS[@]}" >/tmp/helm-development.yaml
+          helm template "${PRODUCTION_RELEASE}" "${CHART_PATH}" "${PRODUCTION_ARGS[@]}" >/tmp/helm-production.yaml
