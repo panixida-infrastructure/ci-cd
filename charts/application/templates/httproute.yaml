@@ -5,9 +5,9 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: {{ include "http-service.fullname" . }}-http-redirect
+  name: {{ include "application.fullname" . }}-http-redirect
   labels:
-    {{- include "http-service.labels" . | nindent 4 }}
+    {{- include "application.labels" . | nindent 4 }}
 spec:
   parentRefs:
     - name: {{ .Values.gateway.name }}
@@ -26,9 +26,9 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: {{ include "http-service.fullname" . }}
+  name: {{ include "application.fullname" . }}
   labels:
-    {{- include "http-service.labels" . | nindent 4 }}
+    {{- include "application.labels" . | nindent 4 }}
 spec:
   parentRefs:
     - name: {{ .Values.gateway.name }}
@@ -38,6 +38,6 @@ spec:
     - {{ $host }}
   rules:
     - backendRefs:
-        - name: {{ include "http-service.fullname" . }}
+        - name: {{ include "application.fullname" . }}
           port: {{ .Values.service.port }}
 {{- end }}

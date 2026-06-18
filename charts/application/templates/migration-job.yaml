@@ -2,9 +2,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "http-service.fullname" . }}-migrate
+  name: {{ include "application.fullname" . }}-migrate
   labels:
-    {{- include "http-service.labels" . | nindent 4 }}
+    {{- include "application.labels" . | nindent 4 }}
     app.kubernetes.io/component: migration
   annotations:
     argocd.argoproj.io/hook: Sync
@@ -17,11 +17,11 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "http-service.baseSelectorLabels" . | nindent 8 }}
+        {{- include "application.baseSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migration
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ include "http-service.serviceAccountName" . }}
+      serviceAccountName: {{ include "application.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

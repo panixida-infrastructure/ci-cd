@@ -1,6 +1,6 @@
-# http-service Helm chart
+# application Helm chart
 
-Reusable Helm chart for PANiXiDA HTTP services.
+Reusable Helm chart for PANiXiDA application workloads.
 
 The chart owns common Kubernetes resources:
 
@@ -57,11 +57,11 @@ migrations:
 Validate locally:
 
 ```bash
-helm lint charts/http-service \
+helm lint charts/application \
   --set image.repository=ghcr.io/example/api \
   --set image.tag=1
 
-helm template example charts/http-service \
+helm template example charts/application \
   --set image.repository=ghcr.io/example/api \
   --set image.tag=1
 ```
