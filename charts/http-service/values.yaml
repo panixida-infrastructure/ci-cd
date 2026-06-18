@@ -26,8 +26,7 @@ service:
 
 env:
   secretName: ""
-  values:
-    ASPNETCORE_HTTP_PORTS: "8080"
+  values: {}
 
 externalSecrets:
   enabled: false

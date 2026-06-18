@@ -1,6 +1,0 @@
-apiVersion: v2
-name: dotnet-service
-description: Reusable PANiXiDA .NET service Kubernetes chart.
-type: application
-version: 0.1.0
-appVersion: "0.1.0"

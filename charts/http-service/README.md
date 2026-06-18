@@ -1,6 +1,6 @@
-# dotnet-service Helm chart
+# http-service Helm chart
 
-Reusable Helm chart for PANiXiDA .NET HTTP services.
+Reusable Helm chart for PANiXiDA HTTP services.
 
 The chart owns common Kubernetes resources:
 
@@ -8,7 +8,7 @@ The chart owns common Kubernetes resources:
 - `Service`
 - optional Gateway API `HTTPRoute`
 - optional External Secrets Operator `SecretStore` and `ExternalSecret`
-- optional EF migration `Job`
+- optional migration `Job`
 - application and External Secrets `ServiceAccount`
 
 Service repositories should keep only service-specific values, for example:
@@ -23,10 +23,8 @@ image:
 env:
   secretName: my-service-api-env
   values:
-    ASPNETCORE_ENVIRONMENT: Development
-    DOTNET_ENVIRONMENT: Development
-    ASPNETCORE_HTTP_PORTS: "8080"
     OTEL_SERVICE_NAME: my-service-api-development
+    APP_ENVIRONMENT: development
 
 gateway:
   enabled: true
@@ -59,11 +57,11 @@ migrations:
 Validate locally:
 
 ```bash
-helm lint charts/dotnet-service \
+helm lint charts/http-service \
   --set image.repository=ghcr.io/example/api \
   --set image.tag=1
 
-helm template example charts/dotnet-service \
+helm template example charts/http-service \
   --set image.repository=ghcr.io/example/api \
   --set image.tag=1
 ```

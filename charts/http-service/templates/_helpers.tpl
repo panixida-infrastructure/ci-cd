@@ -1,8 +1,8 @@
-{{- define "dotnet-service.name" -}}
+{{- define "http-service.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "dotnet-service.fullname" -}}
+{{- define "http-service.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -15,39 +15,39 @@
 {{- end -}}
 {{- end -}}
 
-{{- define "dotnet-service.chart" -}}
+{{- define "http-service.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "dotnet-service.labels" -}}
-helm.sh/chart: {{ include "dotnet-service.chart" . | quote }}
-{{ include "dotnet-service.baseSelectorLabels" . }}
+{{- define "http-service.labels" -}}
+helm.sh/chart: {{ include "http-service.chart" . | quote }}
+{{ include "http-service.baseSelectorLabels" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end -}}
 
-{{- define "dotnet-service.baseSelectorLabels" -}}
-app.kubernetes.io/name: {{ include "dotnet-service.name" . | quote }}
+{{- define "http-service.baseSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "http-service.name" . | quote }}
 app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
-{{- define "dotnet-service.selectorLabels" -}}
-{{ include "dotnet-service.baseSelectorLabels" . }}
+{{- define "http-service.selectorLabels" -}}
+{{ include "http-service.baseSelectorLabels" . }}
 app.kubernetes.io/component: {{ .Values.component | quote }}
 {{- end -}}
 
-{{- define "dotnet-service.serviceAccountName" -}}
+{{- define "http-service.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-{{- default (include "dotnet-service.fullname" .) .Values.serviceAccount.name -}}
+{{- default (include "http-service.fullname" .) .Values.serviceAccount.name -}}
 {{- else -}}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "dotnet-service.externalSecretsServiceAccountName" -}}
-{{- default (printf "%s-external-secrets" (include "dotnet-service.fullname" .)) .Values.externalSecrets.serviceAccount.name -}}
+{{- define "http-service.externalSecretsServiceAccountName" -}}
+{{- default (printf "%s-external-secrets" (include "http-service.fullname" .)) .Values.externalSecrets.serviceAccount.name -}}
 {{- end -}}
 
-{{- define "dotnet-service.secretStoreName" -}}
-{{- printf "%s-openbao" (include "dotnet-service.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- define "http-service.secretStoreName" -}}
+{{- printf "%s-openbao" (include "http-service.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

@@ -2,9 +2,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "dotnet-service.fullname" . }}-migrate
+  name: {{ include "http-service.fullname" . }}-migrate
   labels:
-    {{- include "dotnet-service.labels" . | nindent 4 }}
+    {{- include "http-service.labels" . | nindent 4 }}
     app.kubernetes.io/component: migration
   annotations:
     argocd.argoproj.io/hook: Sync
@@ -17,11 +17,11 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "dotnet-service.baseSelectorLabels" . | nindent 8 }}
+        {{- include "http-service.baseSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migration
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ include "dotnet-service.serviceAccountName" . }}
+      serviceAccountName: {{ include "http-service.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
