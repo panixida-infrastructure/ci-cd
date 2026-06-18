@@ -5,8 +5,13 @@ on:
         required: true
         type: string
       image:
-        required: true
+        required: false
         type: string
+        default: ""
+      service-name:
+        required: false
+        type: string
+        default: ""
       environment:
         required: false
         type: string
@@ -34,6 +39,57 @@ jobs:
         with:
           driver: docker-container
 
+      - name: Resolve image tags
+        id: image
+        env:
+          INPUT_IMAGE: ${{ inputs.image }}
+          SERVICE_NAME: ${{ inputs.service-name }}
+          REGISTRY_URL: ${{ vars.REGISTRY_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${INPUT_IMAGE:-}" ]; then
+            echo "tags=${INPUT_IMAGE}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "${SERVICE_NAME:-}" ]; then
+            echo "::error::Either image or service-name input is required"
+            exit 1
+          fi
+
+          if [ -z "${REGISTRY_URL:-}" ]; then
+            echo "::error::REGISTRY_URL variable is required"
+            exit 1
+          fi
+
+          case "${GITHUB_REF_NAME}" in
+            main|master)
+              env_suffix="prod"
+              ;;
+            stage)
+              env_suffix="stage"
+              ;;
+            develop|development|dev)
+              env_suffix="dev"
+              ;;
+            *)
+              env_suffix=""
+              ;;
+          esac
+
+          repository="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          service_repository="${REGISTRY_URL}/${repository}/${SERVICE_NAME}"
+
+          {
+            echo "tags<<EOF"
+            echo "${service_repository}:${GITHUB_RUN_NUMBER}"
+            if [ -n "${env_suffix}" ]; then
+              echo "${service_repository}:latest-${env_suffix}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
         env:
@@ -52,7 +108,7 @@ jobs:
           push: true
 
           tags: |
-            ${{ inputs.image }}
+            ${{ steps.image.outputs.tags }}
 
           build-args: |
             ENVIRONMENT=${{ inputs.environment }}
