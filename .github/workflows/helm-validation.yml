@@ -1,0 +1,81 @@
+on:
+  workflow_call:
+    inputs:
+      helm-chart-path:
+        required: true
+        type: string
+      helm-version:
+        required: false
+        type: string
+        default: v4.2.2
+      development-values-file:
+        required: false
+        type: string
+        default: values-development.yaml
+      development-images-file:
+        required: false
+        type: string
+        default: images-development.yaml
+      production-values-file:
+        required: false
+        type: string
+        default: values-production.yaml
+      production-images-file:
+        required: false
+        type: string
+        default: images-production.yaml
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Helm
+        run: |
+          set -euo pipefail
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+          chmod 700 get_helm.sh
+          DESIRED_VERSION="${{ inputs.helm-version }}" ./get_helm.sh
+
+      - name: Validate Helm chart path
+        env:
+          HELM_CHART_PATH: ${{ inputs.helm-chart-path }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HELM_CHART_PATH:-}" ]; then
+            echo "::error::helm-chart-path input is required"
+            exit 1
+          fi
+
+          if [ ! -f "${HELM_CHART_PATH}/Chart.yaml" ]; then
+            echo "::error::Chart.yaml was not found in ${HELM_CHART_PATH}"
+            exit 1
+          fi
+
+      - name: Lint Helm chart
+        env:
+          HELM_CHART_PATH: ${{ inputs.helm-chart-path }}
+        run: |
+          set -euo pipefail
+          helm lint "${HELM_CHART_PATH}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.development-values-file }}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.development-images-file }}"
+          helm lint "${HELM_CHART_PATH}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.production-values-file }}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.production-images-file }}"
+
+      - name: Render Helm chart
+        env:
+          HELM_CHART_PATH: ${{ inputs.helm-chart-path }}
+        run: |
+          set -euo pipefail
+          helm template "${GITHUB_REPOSITORY##*/}-development" "${HELM_CHART_PATH}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.development-values-file }}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.development-images-file }}" \
+            >/tmp/helm-development.yaml
+          helm template "${GITHUB_REPOSITORY##*/}-production" "${HELM_CHART_PATH}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.production-values-file }}" \
+            -f "${HELM_CHART_PATH}/${{ inputs.production-images-file }}" \
+            >/tmp/helm-production.yaml
