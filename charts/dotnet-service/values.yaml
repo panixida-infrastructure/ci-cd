@@ -1,0 +1,126 @@
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+component: api
+
+image:
+  repository: ""
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+
+container:
+  name: api
+
+service:
+  type: ClusterIP
+  port: 80
+  containerPort: 8080
+
+env:
+  secretName: ""
+  values:
+    ASPNETCORE_HTTP_PORTS: "8080"
+
+externalSecrets:
+  enabled: false
+  secretStoreSyncWave: "-30"
+  syncWave: "-20"
+  refreshInterval: 1h
+  serviceAccount:
+    create: true
+    name: ""
+    syncWave: "-40"
+    automountServiceAccountToken: false
+  openbao:
+    server: http://openbao.secrets.svc.cluster.local:8200
+    path: secret
+    version: v2
+    authMountPath: kubernetes
+    role: ""
+  app:
+    enabled: false
+    targetName: ""
+    remoteKey: ""
+    data: []
+  registry:
+    enabled: false
+    targetName: ""
+    remoteKey: ""
+    serverProperty: REGISTRY_URL
+    usernameProperty: REGISTRY_USER
+    passwordProperty: REGISTRY_TOKEN
+
+migrations:
+  enabled: false
+  name: migrator
+  syncWave: "-5"
+  image:
+    repository: ""
+    pullPolicy: IfNotPresent
+    tag: ""
+  envSecretName: ""
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  resources: {}
+
+gateway:
+  enabled: false
+  name: core-platform
+  namespace: envoy-gateway-system
+  httpSectionName: http
+  httpsSectionName: ""
+  host: ""
+  redirectHttpToHttps: true
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+probes:
+  startup:
+    enabled: true
+    tcpSocket:
+      port: http
+    failureThreshold: 30
+    periodSeconds: 5
+  readiness:
+    enabled: true
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  liveness:
+    enabled: true
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 20
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
