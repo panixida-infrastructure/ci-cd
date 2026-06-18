@@ -5,6 +5,8 @@ on:
         value: ${{ jobs.run.outputs.environment }}
       environment_pascal:
         value: ${{ jobs.run.outputs.environment_pascal }}
+      environment_suffix:
+        value: ${{ jobs.run.outputs.environment_suffix }}
 
 jobs:
   run:
@@ -12,6 +14,7 @@ jobs:
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       environment_pascal: ${{ steps.env.outputs.environment_pascal }}
+      environment_suffix: ${{ steps.env.outputs.environment_suffix }}
 
     steps:
       - id: env
@@ -22,16 +25,20 @@ jobs:
           if [[ "$REF" == "main" ]]; then
             echo "environment=production" >> "$GITHUB_OUTPUT"
             echo "environment_pascal=Production" >> "$GITHUB_OUTPUT"
+            echo "environment_suffix=prod" >> "$GITHUB_OUTPUT"
 
           elif [[ "$REF" == "stage" ]]; then
             echo "environment=stage" >> "$GITHUB_OUTPUT"
             echo "environment_pascal=Staging" >> "$GITHUB_OUTPUT"
+            echo "environment_suffix=stage" >> "$GITHUB_OUTPUT"
 
           elif [[ "$REF" == "testing" || "$REF" == "test" ]]; then
             echo "environment=test" >> "$GITHUB_OUTPUT"
             echo "environment_pascal=Test" >> "$GITHUB_OUTPUT"
+            echo "environment_suffix=test" >> "$GITHUB_OUTPUT"
 
           else
             echo "environment=development" >> "$GITHUB_OUTPUT"
             echo "environment_pascal=Development" >> "$GITHUB_OUTPUT"
+            echo "environment_suffix=dev" >> "$GITHUB_OUTPUT"
           fi
