@@ -44,6 +44,12 @@ jobs:
         with:
           global-json-file: ./global.json
 
+      - name: Setup Java for SonarQube
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Create nuget.config
         if: ${{ vars.NUGET_CONFIG != '' }}
         env:
@@ -141,6 +147,7 @@ jobs:
             "/k:$SONAR_PROJECT_KEY"
             "/d:sonar.token=$SONAR_TOKEN"
             "/d:sonar.host.url=$SONAR_HOST_URL"
+            "/d:sonar.scanner.skipJreProvisioning=true"
             "/d:sonar.coverageReportPaths=$SONAR_COVERAGE_REPORT"
             "/d:sonar.qualitygate.wait=true"
             "/d:sonar.qualitygate.timeout=1800"

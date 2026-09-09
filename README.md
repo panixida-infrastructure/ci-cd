@@ -51,6 +51,10 @@ TRX results; only their coverage instrumentation is disabled.
 The reusable `.github/workflows/dotnet-sonar.yml` workflow restores, builds,
 and analyzes a .NET solution, then waits for the SonarQube Quality Gate.
 
+The workflow selects Eclipse Temurin Java 21 explicitly and disables scanner
+JRE auto-provisioning. Analysis uses the configured Java runtime without
+downloading a JRE from SonarQube or relying on the runner's default Java version.
+
 Add the following job to a consuming repository:
 
 ```yaml
