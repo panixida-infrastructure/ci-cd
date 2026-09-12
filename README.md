@@ -20,6 +20,34 @@ deploys to:
 
 Use `deploy-root` only when a repository intentionally needs another base directory.
 
+## .NET format workflow
+
+The reusable `.github/workflows/dotnet-format.yml` workflow restores the solution
+and runs `dotnet format --verify-no-changes --severity warn --no-restore`.
+When a root `global.json` exists, the workflow installs the SDK it specifies.
+Repositories without that file continue using the runner's installed SDK.
+Use `PROJECT_FOLDER` for solutions outside the repository root.
+
+For solutions with source generators or analyzers referenced as projects, enable
+`build-before-format`. The formatter needs their compiled assemblies, but does
+not build those project references itself on a clean checkout.
+
+```yaml
+format:
+  uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-format.yml@main
+  with:
+    build-before-format: true
+  secrets:
+    registry-user: ${{ secrets.REGISTRY_USER }}
+    registry-token: ${{ secrets.REGISTRY_TOKEN }}
+```
+
+The optional input defaults to `false`, so existing callers do not need changes.
+When enabled, it adds `dotnet build --no-restore` between restore and formatting.
+This builds the solution and its project dependencies in the default Debug
+configuration used by the formatter. It adds a build to the format job and
+requires that build to succeed.
+
 ## .NET test workflow
 
 The reusable `.github/workflows/dotnet-tests.yml` workflow discovers every
