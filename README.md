@@ -48,6 +48,9 @@ This builds the solution and its project dependencies in the default Debug
 configuration used by the formatter. It adds a build to the format job and
 requires that build to succeed.
 
+Checkout fetches the full Git history so versioning tools such as
+Nerdbank.GitVersioning can calculate the package version during the build.
+
 ## .NET test workflow
 
 The reusable `.github/workflows/dotnet-tests.yml` workflow discovers every
