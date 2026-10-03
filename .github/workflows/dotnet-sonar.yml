@@ -103,8 +103,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
-          key: sonar-${{ runner.os }}-${{ steps.sonar-server.outputs.version }}
+          key: sonar-${{ runner.os }}-${{ steps.sonar-server.outputs.version }}-v2
           restore-keys: |
+            sonar-${{ runner.os }}-${{ steps.sonar-server.outputs.version }}
             sonar-${{ runner.os }}-
 
       - name: Install SonarQube scanner
@@ -148,6 +149,7 @@ jobs:
             "/d:sonar.token=$SONAR_TOKEN"
             "/d:sonar.host.url=$SONAR_HOST_URL"
             "/d:sonar.scanner.skipJreProvisioning=true"
+            "/d:sonar.http.timeout=900"
             "/d:sonar.coverageReportPaths=$SONAR_COVERAGE_REPORT"
             "/d:sonar.qualitygate.wait=true"
             "/d:sonar.qualitygate.timeout=1800"
