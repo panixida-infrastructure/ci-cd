@@ -87,7 +87,7 @@ jobs:
           docker run -d --name sonar-cache-smoke -p 127.0.0.1:19000:9000 \
             -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true "$SONAR_IMAGE"
 
-      - name: Analyze .NET and JSON with component downloads forbidden
+      - name: Analyze .NET, JavaScript and JSON with component downloads forbidden
         run: |
           python3 tests/sonar_cache_smoke.py \
             --server-url http://127.0.0.1:19000 --archive "$RUNNER_TEMP/sonar-archive"

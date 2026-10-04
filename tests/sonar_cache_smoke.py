@@ -114,6 +114,7 @@ def main():
         project = temporary / "project"
         run(["dotnet", "new", "classlib", "--framework", "net10.0", "--output", str(project)], temporary)
         (project / "sample.json").write_text('{"test": true}\n')
+        (project / "sample.js").write_text('export const answer = 42;\n')
         scanner = str(tools / "dotnet-sonarscanner")
         run([scanner, "begin", "/k:shared-cache-smoke", f"/d:sonar.token={token}",
              f"/d:sonar.host.url=http://127.0.0.1:{proxy.server_port}",
@@ -125,7 +126,7 @@ def main():
         proxy.shutdown()
     if blocked:
         raise RuntimeError(f"Unexpected component downloads: {blocked}")
-    print("PASS: .NET and JSON analysis completed with zero component downloads")
+    print("PASS: .NET, JavaScript and JSON analysis completed with zero component downloads")
 
 
 if __name__ == "__main__":
