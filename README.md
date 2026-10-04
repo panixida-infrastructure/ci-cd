@@ -89,9 +89,16 @@ downloading a JRE from SonarQube or relying on the runner's default Java version
 Scanner HTTP requests allow 900 seconds, matching the platform's 15-minute
 SonarQube route timeout. This lets cold scanner-engine downloads finish instead
 of being cancelled by the .NET scanner's default 100-second timeout.
-The Sonar cache key uses a `v2` suffix so existing caches without the scanner
-engine can be restored, completed, and saved under a new key after a successful
-job. Existing cache entries cannot be updated in place.
+All callers share a versioned component archive published in this repository's
+GitHub Releases. It contains the scanner engine, bundled plugins, Roslyn
+analyzers and the pinned .NET scanner package. The normal per-repository Actions
+cache remains the first lookup; a miss restores the shared archive. Unpublished
+archives and server-version mismatches fall back to normal downloads.
+
+Versions are selected in `.github/actions/sonar-cache/versions.json`. Publication
+runs after successful validation on `main` and needs no production Sonar secrets.
+See [shared Sonar cache](docs/sonar-cache.md) for first rollout, update triggers,
+version changes, manual publication and rollback.
 
 Add the following job to a consuming repository:
 

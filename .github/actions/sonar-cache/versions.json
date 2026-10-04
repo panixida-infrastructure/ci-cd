@@ -1,0 +1,6 @@
+{
+  "server_version": "26.9.0.129388",
+  "server_image": "public.ecr.aws/docker/library/sonarqube:26.9.0.129388-community@sha256:2561a3ceb4e80c3cd2db2a110683a896f99efb5363855a0c4876936d51a882ca",
+  "scanner_version": "11.3.0",
+  "revision": 1
+}
