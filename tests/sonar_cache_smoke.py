@@ -28,7 +28,7 @@ def main():
     server_url = args.server_url.rstrip("/")
     action = Path(__file__).resolve().parents[1] / ".github/actions/sonar-cache"
     config = json.loads((action / "versions.json").read_text())
-    for _ in range(120):
+    for _ in range(300):
         try:
             with urllib.request.urlopen(server_url + "/api/system/status", timeout=5) as response:
                 if json.load(response)["status"] == "UP":
