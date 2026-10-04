@@ -19,7 +19,7 @@ on:
       helm-version:
         required: false
         type: string
-        default: v4.2.2
+        default: v4.3.0
       common-values-file:
         required: false
         type: string
