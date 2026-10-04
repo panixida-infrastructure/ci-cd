@@ -44,10 +44,14 @@ def main():
         request = urllib.request.Request(server_url + path,
                                          data=urllib.parse.urlencode(fields).encode(),
                                          headers={"Authorization": f"Basic {auth}"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.read()
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode().replace(password, "[password]")
+            raise RuntimeError(f"Disposable server setup failed: {path}: {detail}") from None
 
-    password = secrets.token_hex(20)
+    password = "Cache!42" + secrets.token_hex(20)
     post("/api/users/change_password",
          {"login": "admin", "previousPassword": "admin", "password": password}, "admin")
     post("/api/projects/create", {"project": "shared-cache-smoke", "name": "Shared cache smoke"}, password)
