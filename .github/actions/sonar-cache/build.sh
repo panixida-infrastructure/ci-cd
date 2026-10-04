@@ -23,7 +23,8 @@ docker cp "$container:/opt/sonarqube/lib/sonar-application-$server_version.jar" 
 copy_directory() {
   # Image directories are read-only; extract as the unprivileged runner user.
   docker cp "$container:/opt/sonarqube/$1/." - \
-    | tar -x --no-same-owner --no-same-permissions --mode=u+rwX -C "$work_dir/$1"
+    | tar -x --no-same-owner --no-same-permissions -C "$work_dir/$1"
+  chmod -R u+rwX "$work_dir/$1"
 }
 copy_directory lib/scanner
 copy_directory lib/extensions

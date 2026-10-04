@@ -93,8 +93,10 @@ def main():
         do_POST = forward
 
     def run(command, directory):
+        # The disposable Community instance analyzes its own main project, not this PR.
+        environment = {key: value for key, value in os.environ.items() if not key.startswith("GITHUB_")}
         result = subprocess.run(command, cwd=directory, text=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT)
+                                stderr=subprocess.STDOUT, env=environment)
         print(result.stdout.replace(token, "[token]"))
         if result.returncode:
             raise RuntimeError(f"Smoke command failed: {command[0]}")
