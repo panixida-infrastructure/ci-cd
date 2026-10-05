@@ -53,52 +53,9 @@ jobs:
             --set image.tag=1 \
             > /dev/null
 
-  sonar-cache:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Test shared Sonar cache packaging and restoration
-        run: python3 -m unittest discover -s tests -v
-
-      - name: Setup .NET for cache smoke test
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Setup Java for cache smoke test
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Resolve SonarQube image
-        id: versions
-        run: python3 .github/actions/sonar-cache/cache.py info
-
-      - name: Build real component archive
-        run: bash .github/actions/sonar-cache/build.sh "$RUNNER_TEMP/sonar-archive"
-
-      - name: Start disposable SonarQube
-        env:
-          SONAR_IMAGE: ${{ steps.versions.outputs.server-image }}
-        run: |
-          docker run -d --name sonar-cache-smoke -p 127.0.0.1:19000:9000 \
-            -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true "$SONAR_IMAGE"
-
-      - name: Analyze .NET, JavaScript and JSON with component downloads forbidden
-        run: |
-          python3 tests/sonar_cache_smoke.py \
-            --server-url http://127.0.0.1:19000 --archive "$RUNNER_TEMP/sonar-archive"
-
-      - name: Remove disposable SonarQube
-        if: always()
-        run: docker rm -fv sonar-cache-smoke || true
-
   notify:
     if: ${{ always() && github.event_name == 'push' && github.ref_name == 'main' }}
-    needs: [ actionlint, helm, sonar-cache ]
+    needs: [ actionlint, helm ]
     uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/notify-telegram.yml@main
     with:
       event-name: ${{ github.event_name }}

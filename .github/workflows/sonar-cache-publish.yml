@@ -73,7 +73,7 @@ jobs:
           Shared SonarScanner engine, bundled analyzers, Roslyn resources and pinned
           .NET scanner package. This archive contains upstream components only.
           See manifest.json for versions, image digest, plugin hashes and file checksums.
-          See docs/sonar-cache.md for updates and rollback instructions.
+          See the SonarQube section in README.md for updates and rollback.
           NOTES
           # Upload while draft so consumers never observe a partially uploaded archive.
           gh release create "$TAG" "$RUNNER_TEMP/sonar-archive/"* \

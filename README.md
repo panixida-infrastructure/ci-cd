@@ -95,10 +95,22 @@ analyzers and the pinned .NET scanner package. The normal per-repository Actions
 cache remains the first lookup; a miss restores the shared archive. Unpublished
 archives and server-version mismatches fall back to normal downloads.
 
-Versions are selected in `.github/actions/sonar-cache/versions.json`. Publication
-runs after successful validation on `main` and needs no production Sonar secrets.
-See [shared Sonar cache](docs/sonar-cache.md) for first rollout, update triggers,
-version changes, manual publication and rollback.
+The separate `Publish shared Sonar cache` workflow builds the archive from the
+official SonarQube image after a successful `Validate` run for a push to `main`.
+It skips already published versions and can also be run manually from Actions
+on `main`. Consumer repositories only read the archive; publication needs no
+production Sonar secrets. After the first merge, wait for publication to finish.
+
+Update `.github/actions/sonar-cache/versions.json` through a PR:
+
+- When upgrading SonarQube, update `server_version` and `server_image` (including
+  its digest) together; the archive must match the running server.
+- To upgrade the .NET scanner, change `scanner_version`.
+- To rebuild the same versions after a packaging fix, increment `revision`.
+
+After merge and validation, the workflow publishes a new immutable archive.
+New repositories and branches need no archive changes. To roll back, restore
+the previous version settings matching the server; published archives are kept.
 
 Add the following job to a consuming repository:
 
