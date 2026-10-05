@@ -1,4 +1,5 @@
 .dotnet_e2e_tests:
+    interruptible: true
     image: mcr.microsoft.com/dotnet/sdk:6.0
     variables:
       ALLURE_API_URL: http://82.97.241.162:5050/allure-docker-service

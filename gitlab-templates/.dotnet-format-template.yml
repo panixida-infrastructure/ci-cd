@@ -1,8 +1,40 @@
+.retry_infra: &retry_infra
+  max: 2
+  when:
+    - runner_system_failure
+    - stuck_or_timeout_failure
+    - scheduler_failure
+    - api_failure
+
 .format_dotnet:
+  interruptible: true
   image: mcr.microsoft.com/dotnet/sdk:6.0
+  retry: *retry_infra
   script:
     - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
-    - dotnet tool install -g dotnet-format || true
+    - dotnet tool install -g dotnet-format || true --configfile ./nuget.config
     - export PATH="$PATH:$HOME/.dotnet/tools"
     - dotnet tool restore
     - dotnet format --verify-no-changes
+
+.format_dotnet_fast:
+  interruptible: true
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  retry: *retry_infra
+  script:
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+    - dotnet tool install -g dotnet-format || true --configfile ./nuget.config
+    - export PATH="$PATH:$HOME/.dotnet/tools"
+    - dotnet restore --verbosity quiet
+    - dotnet format --verify-no-changes --exclude **/Tests/** --exclude **/*Migrator/** --exclude **/CodeGeneration/**
+
+.format_dotnet_shell:
+  interruptible: true
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  retry: *retry_infra
+  script:
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+    - dotnet tool install -g dotnet-format --configfile ./nuget.config || true
+    - export PATH="$PATH:$HOME/.dotnet/tools"
+    - dotnet restore --verbosity quiet
+    - dotnet format --verify-no-changes --no-restore --exclude **/Tests/** --exclude **/*Migrator/** --exclude **/CodeGeneration/**

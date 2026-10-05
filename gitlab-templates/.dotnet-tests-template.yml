@@ -1,8 +1,18 @@
+.retry_infra: &retry_infra
+  max: 2
+  when:
+    - runner_system_failure
+    - stuck_or_timeout_failure
+    - scheduler_failure
+    - api_failure
+
 .dotnet_tests:
+    interruptible: true
     variables:
         REPORT_DIRECTORY: "tests-report"
         COVERAGE_DIRECTORY: "tests-report/coverage"
-    coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'         
+    coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'
+    retry: *retry_infra
     script:
         - |
             set -eo pipefail
@@ -15,8 +25,8 @@
             TEST_EXIT=$?
             set -e
 
-            dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.11
-            dotnet tool install --global trx2junit
+            dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.16 --configfile ./nuget.config
+            dotnet tool install --global trx2junit --configfile ./nuget.config
             export PATH="$PATH:/root/.dotnet/tools"
 
             mkdir -p "$REPORT_DIRECTORY/junit"
@@ -25,40 +35,424 @@
             reportgenerator \
                 -reports:"**/coverage.cobertura.xml" \
                 -targetdir:"$COVERAGE_DIRECTORY" \
-                -reporttypes:"Html;Cobertura;TextSummary" \
+                -reporttypes:"Cobertura;TextSummary" \
                 -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
-        
-            cat > "$REPORT_DIRECTORY/coverage-report.html" <<'HTML'
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta http-equiv="refresh" content="0; url=coverage/index.html">
-            </head>
-            </html>
-            HTML
-        
-            cat "$COVERAGE_DIRECTORY/Summary.txt" || true  
 
-            apt-get update && apt-get install -y nodejs npm
-            npm i -g xunit-viewer
-            xunit-viewer -r $REPORT_DIRECTORY/junit -o $REPORT_DIRECTORY/tests-report.html -n "Tests Report"
+            cat "$COVERAGE_DIRECTORY/Summary.txt" || true
 
             LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
             echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
             awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
-                || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }          
-      
+                || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }
+
             exit $TEST_EXIT
     artifacts:
         when: always
         expire_in: 1 days
         paths:
             - "tests-report/coverage/"
-            - "tests-report/coverage-report.html"
-            - "tests-report/tests-report.html"
             - "tests-report/coverage/Summary.txt"
         reports:
             junit: "tests-report/junit/*.xml"
             coverage_report:
                 coverage_format: cobertura
                 path: "tests-report/coverage/Cobertura.xml"
+
+.dotnet_tests_mtp:
+  interruptible: true
+  variables:
+    REPORT_DIRECTORY: "tests-report"
+    COVERAGE_DIRECTORY: "tests-report/coverage"
+  coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'
+  retry: *retry_infra
+  script:
+    - |
+        set -eo pipefail
+
+        mkdir -p "$REPORT_DIRECTORY"
+        mkdir -p "$REPORT_DIRECTORY/junit"
+        mkdir -p "$REPORT_DIRECTORY/raw-coverage"
+        mkdir -p "$COVERAGE_DIRECTORY"
+
+        cp "$NUGET_CONFIG_FILE" "./nuget.config"
+        dotnet restore
+
+        TEST_EXIT=0
+
+        mapfile -t TEST_PROJECTS < <(
+          find . -type f \
+            \( \
+              -name "*Tests.csproj" \
+              -o -name "*Test.csproj" \
+              -o -name "*Specs.csproj" \
+              -o -name "*Spec.csproj" \
+            \) \
+            -not -path "*/bin/*" \
+            -not -path "*/obj/*" \
+            | sort
+        )
+
+        if [ "${#TEST_PROJECTS[@]}" -gt 0 ]; then
+          echo "Found ${#TEST_PROJECTS[@]} test project(s). Running them separately."
+
+          for TEST_PROJECT in "${TEST_PROJECTS[@]}"; do
+            RELATIVE_PROJECT_PATH="${TEST_PROJECT#./}"
+            PROJECT_NAME="${RELATIVE_PROJECT_PATH%.csproj}"
+            SAFE_PROJECT_NAME="$(echo "$PROJECT_NAME" | sed 's#[/\\ ]#_#g' | tr -cs '[:alnum:]_.-' '_')"
+
+            echo "▶ Running tests: $TEST_PROJECT"
+
+            set +e
+            dotnet test --project "$TEST_PROJECT" \
+              --results-directory "$REPORT_DIRECTORY" \
+              --coverage \
+              --coverage-output-format cobertura \
+              --coverage-output "raw-coverage/${SAFE_PROJECT_NAME}.cobertura.xml" \
+              --report-trx \
+              --report-trx-filename "${SAFE_PROJECT_NAME}.trx" \
+              --ignore-exit-code 8
+
+            CURRENT_TEST_EXIT=$?
+            set -e
+
+            if [ "$TEST_EXIT" -eq 0 ] && [ "$CURRENT_TEST_EXIT" -ne 0 ]; then
+              TEST_EXIT=$CURRENT_TEST_EXIT
+            fi
+          done
+        else
+          echo "No test projects found by name pattern. Running fallback: dotnet test"
+
+          set +e
+          dotnet test \
+            --results-directory "$REPORT_DIRECTORY" \
+            --coverage \
+            --coverage-output-format cobertura \
+            --coverage-output "raw-coverage/coverage.cobertura.xml" \
+            --report-trx \
+            --report-trx-filename "test_results.trx" \
+            --ignore-exit-code 8
+
+          TEST_EXIT=$?
+          set -e
+        fi
+
+        TOOLS="/dotnet-tools/net$(dotnet --version 2>/dev/null|cut -d. -f1)"; export PATH="$TOOLS:$HOME/.dotnet/tools:$PATH"; mkdir -p "$TOOLS"
+        _ensure(){ [ -x "$TOOLS/$1" ] && return 0; ( flock 9 2>/dev/null||true; [ -x "$TOOLS/$1" ] || dotnet tool install --tool-path "$TOOLS" "${@:2}" --configfile ./nuget.config||true ) 9>"$TOOLS/.lock"||true; [ -x "$TOOLS/$1" ] || dotnet tool install --global "${@:2}" --configfile ./nuget.config||true; return 0; }
+        _ensure reportgenerator dotnet-reportgenerator-globaltool --version 5.4.16
+        _ensure trx2junit trx2junit
+
+        trx2junit "$REPORT_DIRECTORY"/*.trx --output "$REPORT_DIRECTORY/junit" || true
+
+        COVERAGE_REPORTS=$(find "$REPORT_DIRECTORY/raw-coverage" -type f -name "*.cobertura.xml" | sort | paste -sd ';' -)
+
+        if [ -z "$COVERAGE_REPORTS" ]; then
+          echo "❌ Coverage files not found"
+          exit 1
+        fi
+
+        reportgenerator \
+          -reports:"$COVERAGE_REPORTS" \
+          -targetdir:"$COVERAGE_DIRECTORY" \
+          -reporttypes:"Cobertura;TextSummary" \
+          -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
+
+        if [ ! -f "$COVERAGE_DIRECTORY/Summary.txt" ]; then
+          echo "❌ Summary.txt was not generated"
+          exit 1
+        fi
+
+        if [ ! -f "$COVERAGE_DIRECTORY/Cobertura.xml" ]; then
+          echo "❌ Cobertura.xml was not generated"
+          exit 1
+        fi
+
+        cp "$COVERAGE_DIRECTORY/Cobertura.xml" "$REPORT_DIRECTORY/raw-coverage/coverage.cobertura.xml"
+
+        cat "$COVERAGE_DIRECTORY/Summary.txt" || true
+
+        COVERABLE_LINES=$(grep -Po 'Coverable lines[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
+        LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
+
+        echo "📊 Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+
+        awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
+          || { echo "❌ Coverage ${LINE_COVERAGE}% ниже порога ${COVERAGE_THRESHOLD}%"; exit 1; }
+
+        exit $TEST_EXIT
+  artifacts:
+    when: always
+    expire_in: 1 days
+    paths:
+      - "tests-report/"
+      - "tests-report/coverage/"
+      - "tests-report/coverage/Summary.txt"
+    reports:
+      junit: "tests-report/junit/*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "tests-report/raw-coverage/coverage.cobertura.xml"
+
+# ---------------------------------------------------------------------------------------------------
+# ПАРАЛЛЕЛЬНЫЕ ТЕСТЫ (ОПТ-ИН). Существующий .dotnet_tests_mtp (последовательный прогон всех проектов в
+# одной джобе) не трогается — репо без подключения работают как раньше. Кто параллелит, заводит ДВЕ джобы:
+#   tests:           extends .dotnet_test_cell   + parallel:matrix по своим тест-проектам (TEST_SUITE)
+#   tests-coverage:  extends .dotnet_tests_coverage + needs:[tests]
+# Набор проектов кастомизируется matrix'ей на стороне репо. codegen (если нужен) — репо-специфичный шаг,
+# его репо кладёт в СВОЙ before_script (условно по $TEST_SUITE), базовая джоба его НЕ содержит.
+# ---------------------------------------------------------------------------------------------------
+
+# Одна matrix-ячейка = один тест-проект ($TEST_SUITE = имя .csproj без расширения). Гоняет свой проект,
+# отдаёт cobertura+junit артефактами. Порог покрытия здесь НЕ проверяется (частичное) — сводит tests-coverage.
+.dotnet_test_cell:
+  interruptible: true
+  retry: *retry_infra
+  variables:
+    REPORT_DIRECTORY: "tests-report"
+    # Параллелизм держим на уровне GitLab-ячеек (job-per-тест-проект), а не внутри процесса:
+    # TUnit по умолчанию гоняет тесты сборки параллельно, из-за чего конкурентные CREATE DATABASE
+    # в интеграционных тестах дерутся за системный лок model. Игнорируется не-TUnit раннерами.
+    TUNIT_MAX_PARALLEL_TESTS: "1"
+  script:
+    - |
+      set -eo pipefail
+      mkdir -p "$REPORT_DIRECTORY/raw-coverage" "$REPORT_DIRECTORY/junit"
+      cp "$NUGET_CONFIG_FILE" "./nuget.config"
+      dotnet restore
+
+      if [ -n "${TEST_CELL_SETUP:-}" ]; then echo "test-cell setup (TEST_CELL_SETUP)"; eval "$TEST_CELL_SETUP"; fi
+
+      # авто-codegen (динамически, без переменных): если тест-проект ссылается на JasperFx-codegen хост
+      # (Program с RunJasperFxCommands/JasperFxEnvironment) — предгенерировать код, иначе функц.WAF компилит
+      # хендлеры в рантайме (Roslyn) → всплеск памяти/времени. Для репо без такого хоста — no-op.
+      CODEGEN_HOST=""
+      for c in $(find . -name '*.csproj' ! -path '*/bin/*' ! -path '*/obj/*'); do
+        if grep -rqlE 'RunJasperFxCommands|JasperFxEnvironment' "$(dirname "$c")" --include='*.cs' 2>/dev/null; then CODEGEN_HOST="$c"; break; fi
+      done
+      if [ -n "$CODEGEN_HOST" ]; then
+        _TESTCS="$(find . -name "${TEST_SUITE}.csproj" ! -path '*/bin/*' ! -path '*/obj/*' | head -1)"
+        if [ -n "$_TESTCS" ] && grep -q "$(basename "$CODEGEN_HOST")" "$_TESTCS"; then
+          echo "auto-codegen: $TEST_SUITE ссылается на $(basename "$CODEGEN_HOST") -> codegen write"
+          dotnet run --project "$CODEGEN_HOST" -c Debug --no-launch-profile -- codegen write
+        fi
+      fi
+
+      TEST_PROJECT=$(find . -type f -name "${TEST_SUITE}.csproj" -not -path "*/bin/*" -not -path "*/obj/*" | head -1)
+      if [ -z "$TEST_PROJECT" ]; then
+        echo "Test project ${TEST_SUITE}.csproj not found"
+        exit 1
+      fi
+      echo "Running tests: $TEST_PROJECT"
+
+      set +e
+      dotnet test --project "$TEST_PROJECT" \
+        --results-directory "$REPORT_DIRECTORY" \
+        --coverage \
+        --coverage-output-format cobertura \
+        --coverage-output "raw-coverage/${TEST_SUITE}.cobertura.xml" \
+        --report-trx \
+        --report-trx-filename "${TEST_SUITE}.trx" \
+        --ignore-exit-code 8
+      TEST_EXIT=$?
+      set -e
+
+      TOOLS="/dotnet-tools/net$(dotnet --version 2>/dev/null|cut -d. -f1)"; export PATH="$TOOLS:$HOME/.dotnet/tools:$PATH"; mkdir -p "$TOOLS"
+      _ensure(){ [ -x "$TOOLS/$1" ] && return 0; ( flock 9 2>/dev/null||true; [ -x "$TOOLS/$1" ] || dotnet tool install --tool-path "$TOOLS" "${@:2}" --configfile ./nuget.config||true ) 9>"$TOOLS/.lock"||true; [ -x "$TOOLS/$1" ] || dotnet tool install --global "${@:2}" --configfile ./nuget.config||true; return 0; }
+      _ensure trx2junit trx2junit
+      trx2junit "$REPORT_DIRECTORY/${TEST_SUITE}.trx" --output "$REPORT_DIRECTORY/junit" || true
+
+      exit $TEST_EXIT
+  artifacts:
+    when: always
+    expire_in: 1 days
+    paths:
+      - "tests-report/raw-coverage/"
+      - "tests-report/junit/"
+    reports:
+      junit: "tests-report/junit/*.xml"
+
+# Сводит cobertura всех ячеек tests в один отчёт и проверяет порог COVERAGE_THRESHOLD. Ставится с
+# needs:[tests] → забирает артефакты всех matrix-ячеек (raw-coverage/<TEST_SUITE>.cobertura.xml не конфликтуют).
+.dotnet_tests_coverage:
+  interruptible: true
+  retry: *retry_infra
+  variables:
+    GIT_STRATEGY: "none"
+    REPORT_DIRECTORY: "tests-report"
+    COVERAGE_DIRECTORY: "tests-report/coverage"
+  coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'
+  script:
+    - |
+      set -eo pipefail
+      cp "$NUGET_CONFIG_FILE" "./nuget.config"
+      TOOLS="/dotnet-tools/net$(dotnet --version 2>/dev/null|cut -d. -f1)"; export PATH="$TOOLS:$HOME/.dotnet/tools:$PATH"; mkdir -p "$TOOLS"
+      _ensure(){ [ -x "$TOOLS/$1" ] && return 0; ( flock 9 2>/dev/null||true; [ -x "$TOOLS/$1" ] || dotnet tool install --tool-path "$TOOLS" "${@:2}" --configfile ./nuget.config||true ) 9>"$TOOLS/.lock"||true; [ -x "$TOOLS/$1" ] || dotnet tool install --global "${@:2}" --configfile ./nuget.config||true; return 0; }
+      _ensure reportgenerator dotnet-reportgenerator-globaltool --version 5.4.16
+
+      mkdir -p "$COVERAGE_DIRECTORY"
+      COVERAGE_REPORTS=$(find "$REPORT_DIRECTORY/raw-coverage" -type f -name "*.cobertura.xml" | sort | paste -sd ';' -)
+      if [ -z "$COVERAGE_REPORTS" ]; then
+        echo "Coverage files not found"
+        exit 1
+      fi
+
+      reportgenerator \
+        -reports:"$COVERAGE_REPORTS" \
+        -targetdir:"$COVERAGE_DIRECTORY" \
+        -reporttypes:"Cobertura;TextSummary" \
+        -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
+
+      cat "$COVERAGE_DIRECTORY/Summary.txt" || true
+      LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
+      echo "Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+      awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
+        || { echo "Coverage ${LINE_COVERAGE}% below threshold ${COVERAGE_THRESHOLD}%"; exit 1; }
+  artifacts:
+    when: always
+    expire_in: 1 days
+    paths:
+      - "tests-report/coverage/"
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: "tests-report/coverage/Cobertura.xml"
+
+# Единая ВНЕШНЯЯ coverage-джоба для динамического child-пайплайна (autodetect).
+# Child содержит только matrix-ячейки (raw-cobertura на ячейку); здесь по bridge trigger-джобы находим
+# дочерний пайплайн, тянем raw-cobertura со ВСЕХ ячеек через GITLAB_API_TOKEN (read_api), сводим один раз,
+# проверяем порог и отдаём coverage_report — чтобы число попадало в MR-виджет (child в него не агрегируется).
+# Подключение в репо: coverage-report: { extends: [.dotnet_tests_coverage_dynamic, .main_changes_rules], needs: [tests] }
+.dotnet_tests_coverage_dynamic:
+  interruptible: true
+  retry: *retry_infra
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  variables:
+    GIT_STRATEGY: "none"
+    COVERAGE_DIRECTORY: "tests-report/coverage"
+  coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'
+  script:
+    - |
+      set -eo pipefail
+      NEED=""; for _t in jq unzip; do command -v "$_t" >/dev/null 2>&1 || NEED="$NEED $_t"; done
+      if [ -n "$NEED" ]; then apt-get update -qq && apt-get install -y -qq $NEED >/dev/null; fi
+      cp "$NUGET_CONFIG_FILE" "./nuget.config"
+      API="$CI_API_V4_URL/projects/$CI_PROJECT_ID"; AUTH="PRIVATE-TOKEN: $GITLAB_API_TOKEN"
+      CHILD=$(curl -sfS --header "$AUTH" "$API/pipelines/$CI_PIPELINE_ID/bridges" | jq -r '[.[]|select(.name=="tests")][0].downstream_pipeline.id')
+      [ -n "$CHILD" ] && [ "$CHILD" != "null" ] || { echo "child pipeline не найден"; exit 1; }
+      echo "child pipeline: $CHILD"
+      mkdir -p raw-coverage "$COVERAGE_DIRECTORY"
+      for JID in $(curl -sfS --header "$AUTH" "$API/pipelines/$CHILD/jobs?per_page=100" | jq -r '.[]|select(.name|startswith("tests:"))|.id'); do
+        echo "  <- raw-coverage из ячейки job $JID"
+        curl -sfSL --header "$AUTH" "$API/jobs/$JID/artifacts" -o cell.zip
+        unzip -o -j cell.zip 'tests-report/raw-coverage/*' -d raw-coverage >/dev/null || true
+        unzip -o cell.zip 'tests-report/junit/*' -d . >/dev/null 2>&1 || true
+        rm -f cell.zip
+      done
+      TOOLS="/dotnet-tools/net$(dotnet --version 2>/dev/null|cut -d. -f1)"; export PATH="$TOOLS:$HOME/.dotnet/tools:$PATH"; mkdir -p "$TOOLS"
+      _ensure(){ [ -x "$TOOLS/$1" ] && return 0; ( flock 9 2>/dev/null||true; [ -x "$TOOLS/$1" ] || dotnet tool install --tool-path "$TOOLS" "${@:2}" --configfile ./nuget.config||true ) 9>"$TOOLS/.lock"||true; [ -x "$TOOLS/$1" ] || dotnet tool install --global "${@:2}" --configfile ./nuget.config||true; return 0; }
+      _ensure reportgenerator dotnet-reportgenerator-globaltool --version 5.4.16
+      COVERAGE_REPORTS=$(find raw-coverage -type f -name "*.cobertura.xml" | sort | paste -sd ';' -)
+      [ -n "$COVERAGE_REPORTS" ] || { echo "raw-coverage не найдены"; exit 1; }
+      reportgenerator -reports:"$COVERAGE_REPORTS" -targetdir:"$COVERAGE_DIRECTORY" -reporttypes:"Cobertura;TextSummary" -assemblyfilters:"$COVERAGE_ASSEMBLY_FILTERS"
+      cat "$COVERAGE_DIRECTORY/Summary.txt" || true
+      LINE_COVERAGE=$(grep -Po 'Line coverage[:\s]+\K[\d.]+' "$COVERAGE_DIRECTORY/Summary.txt" | head -1 || echo 0)
+      echo "Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+      awk -v c="$LINE_COVERAGE" -v t="$COVERAGE_THRESHOLD" 'BEGIN{exit (c+0<t+0)}' \
+        || { echo "Coverage ${LINE_COVERAGE}% below threshold ${COVERAGE_THRESHOLD}%"; exit 1; }
+  artifacts:
+    when: always
+    expire_in: 1 days
+    paths:
+      - "tests-report/coverage/"
+    reports:
+      junit: "tests-report/junit/*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "tests-report/coverage/Cobertura.xml"
+
+# ---------------------------------------------------------------------------------------------------
+# ПРИМЕР подключения в .gitlab-ci.yml репозитория (codegen — репо-специфичный шаг в before_script):
+#
+# tests:
+#   stage: code-quality
+#   image: mcr.microsoft.com/dotnet/sdk:10.0
+#   parallel:
+#     matrix:
+#       - TEST_SUITE: [MyApp.FunctionalTests, MyApp.IntegrationTests, MyApp.UnitTests]
+#   before_script:
+#     - cp "$NUGET_CONFIG_FILE" ./nuget.config
+#     - if [ "$TEST_SUITE" = "MyApp.FunctionalTests" ]; then
+#         dotnet run --project src/MyApp.Host/MyApp.Host.csproj -c Debug --no-launch-profile -- codegen write;
+#       fi
+#   extends: [.dotnet_test_cell, .main_changes_rules]
+#
+# tests-coverage:
+#   stage: code-quality
+#   image: mcr.microsoft.com/dotnet/sdk:10.0
+#   needs: [tests]
+#   extends: [.dotnet_tests_coverage, .main_changes_rules]
+# ---------------------------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------------------------
+# АВТООПРЕДЕЛЕНИЕ тест-проектов (dynamic child pipeline) — опционально, вместо ручного parallel:matrix.
+# .dotnet_tests_generate_dynamic находит тест-проекты по СОДЕРЖИМОМУ csproj (ссылка на тест-раннер), генерит
+# дочерний пайплайн (matrix-ячейки .dotnet_test_cell + .dotnet_tests_coverage) и отдаёт его артефактом;
+# репо триггерит его. Codegen (если нужен) — АВТО в .dotnet_test_cell (по ссылке тест-проекта на JasperFx-хост).
+# Подключение в .gitlab-ci.yml репо:
+#   generate-tests: { extends: [.dotnet_tests_generate_dynamic, .main_changes_rules], stage: code-quality }
+#   tests:          { stage: code-quality, needs: [generate-tests],
+#                     trigger: { include: [{artifact: tests-child.yml, job: generate-tests}], strategy: depend } }
+# Признак тест-проекта: Microsoft.NET.Test.Sdk (VSTest) | Microsoft.Testing.Platform (MTP) |
+#   <OutputType>Exe + xunit/nunit (MTP транзитивно через xunit.v3) | MSTest; хелперы *.Testing/*.TestKit исключены.
+# ---------------------------------------------------------------------------------------------------
+.dotnet_tests_generate_dynamic:
+  interruptible: true
+  image: alpine:latest
+  variables:
+    GIT_DEPTH: "1"
+    DOTNET_TESTS_TEMPLATE_URL: "https://raw.githubusercontent.com/PANiXiDA-Infrastructure/ci-cd/main/gitlab-templates/.dotnet-tests-template.yml"
+  script:
+    - |
+      set -eu
+      PROJECTS=""
+      for cs in $(find . -name '*.csproj' ! -path '*/bin/*' ! -path '*/obj/*'); do
+        if grep -qE 'Microsoft\.NET\.Test\.Sdk|Microsoft\.Testing\.(Platform|Extensions)' "$cs" \
+           || { grep -qE '<OutputType>[[:space:]]*[Ee]xe' "$cs" && grep -qiE 'xunit|nunit' "$cs"; } \
+           || grep -qiE 'MSTest\.Test(Framework|Adapter)' "$cs" \
+           || grep -qE 'PackageReference[^>]*"TUnit"' "$cs"; then
+          base=$(basename "$cs" .csproj)
+          case "$base" in *.Testing|*.TestKit|*TestHelpers) continue;; esac
+          PROJECTS="$PROJECTS $base"
+        fi
+      done
+      PROJECTS=$(printf '%s\n' $PROJECTS | sort -u | grep -v '^$' || true)
+      [ -n "$PROJECTS" ] || { echo "Тест-проекты не найдены"; exit 1; }
+      echo "Найдены тест-проекты:"; printf '  %s\n' $PROJECTS
+      {
+        echo 'include:'
+        echo "  - remote: \"$DOTNET_TESTS_TEMPLATE_URL\""
+        echo 'stages: ["code-quality"]'
+        echo 'tests:'
+        echo '  stage: code-quality'
+        echo '  image: mcr.microsoft.com/dotnet/sdk:10.0'
+        echo '  extends: [".dotnet_test_cell"]'
+        echo '  rules:'
+        echo '    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"'
+        echo '  parallel:'
+        echo '    matrix:'
+        echo '      - TEST_SUITE:'
+        for p in $PROJECTS; do echo "        - $p"; done
+      } > tests-child.yml
+      echo "--- сгенерённый дочерний пайплайн ---"; cat tests-child.yml
+  artifacts:
+    paths: ["tests-child.yml"]
+    expire_in: 1 hour
+
+# Триггер дочернего пайплайна из артефакта генератора — чтобы репо не хардкодил имя tests-child.yml/имя джобы.
+# Репо: tests: { extends: [.dotnet_tests_run_dynamic, .main_changes_rules], stage: code-quality, needs: [generate-tests] }
+.dotnet_tests_run_dynamic:
+  interruptible: true
+  trigger:
+    include:
+      - artifact: tests-child.yml
+        job: generate-tests
+    strategy: depend

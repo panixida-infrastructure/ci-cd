@@ -1,14 +1,32 @@
 .update_database:
   environment:
-    name: $DEPLOY_ENV  
+    name: $DEPLOY_ENV
+  image: docker:27-cli
   script:
-    - apt-get update
-    - apt-get install -y docker.io
+    - 'command -v docker >/dev/null 2>&1 || { apt-get update && apt-get install -y docker.io; }'
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+    - ENV_FILE=$(eval echo \$env${CONTUR_NAME}_${ENV_SUFFIX})
+    - cp "$ENV_FILE" "$MIGRATOR_FOLDER/.env"
+    # Опц. оверрайд хоста БД ТОЛЬКО для миграции (джоба бежит с CI-раннера): если задан
+    # MIGRATOR_DB_HOST — на строках с ConnectionStrings__ переписываем Host= на него (напр.
+    # VPN-адрес БД), не трогая рантайм-строку приложения (env_dev остаётся локальным).
+    # Имя строки подключения НЕ хардкодим (любой ConnectionStrings__*). Без переменной — без изменений.
+    - 'if [ -n "$MIGRATOR_DB_HOST" ]; then sed -i -E "/ConnectionStrings__/ s/(Host=)[^;\"]+/\1$MIGRATOR_DB_HOST/Ig" "$MIGRATOR_FOLDER/.env"; echo "migrator: DB host -> $MIGRATOR_DB_HOST"; fi'
+    - docker build --build-arg BUILD_CONFIGURATION=Release -t "migrator-$CI_PROJECT_ID-$CI_PIPELINE_ID" -f "$MIGRATOR_FOLDER/Dockerfile" .
+    - docker run --rm --env-file "$MIGRATOR_FOLDER/.env" "migrator-$CI_PROJECT_ID-$CI_PIPELINE_ID"
+  after_script:
+    - docker rmi "migrator-$CI_PROJECT_ID-$CI_PIPELINE_ID" || true
 
+.update_database_shell:
+  environment:
+    name: $DEPLOY_ENV
+  script:
     - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
 
     - ENV_FILE=$(eval echo \$env${CONTUR_NAME}_${ENV_SUFFIX})
+    - echo "DEPLOY_ENV=$DEPLOY_ENV CONTUR_NAME=$CONTUR_NAME ENV_SUFFIX=$ENV_SUFFIX"
     - cp "$ENV_FILE" "$MIGRATOR_FOLDER/.env"
+    - 'if [ -n "$MIGRATOR_DB_HOST" ]; then sed -i -E "/ConnectionStrings__/ s/(Host=)[^;\"]+/\1$MIGRATOR_DB_HOST/Ig" "$MIGRATOR_FOLDER/.env"; echo "migrator: DB host -> $MIGRATOR_DB_HOST"; fi'
 
     - dotnet restore "$MIGRATOR_FOLDER/$MIGRATOR_PROJECT"
     - docker build --build-arg BUILD_CONFIGURATION=Release -t migrator-image -f "$MIGRATOR_FOLDER/Dockerfile" .
