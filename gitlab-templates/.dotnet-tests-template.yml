@@ -98,7 +98,8 @@
           for TEST_PROJECT in "${TEST_PROJECTS[@]}"; do
             RELATIVE_PROJECT_PATH="${TEST_PROJECT#./}"
             PROJECT_NAME="${RELATIVE_PROJECT_PATH%.csproj}"
-            SAFE_PROJECT_NAME="$(echo "$PROJECT_NAME" | sed 's#[/\\ ]#_#g' | tr -cs '[:alnum:]_.-' '_')"
+            SAFE_PROJECT_NAME="$(printf '%s' "$PROJECT_NAME" | sed 's#[/\\ ]#_#g' | tr -cs '[:alnum:]_.-' '_')"
+            SAFE_PROJECT_NAME="$SAFE_PROJECT_NAME-$(printf '%s' "$RELATIVE_PROJECT_PATH" | sha256sum | cut -c1-16)"
 
             echo "▶ Running tests: $TEST_PROJECT"
 
@@ -319,12 +320,19 @@
       [ -n "$CHILD" ] && [ "$CHILD" != "null" ] || { echo "child pipeline не найден"; exit 1; }
       echo "child pipeline: $CHILD"
       mkdir -p raw-coverage "$COVERAGE_DIRECTORY"
-      for JID in $(curl -sfS --header "$AUTH" "$API/pipelines/$CHILD/jobs?per_page=100" | jq -r '.[]|select(.name|startswith("tests:"))|.id'); do
-        echo "  <- raw-coverage из ячейки job $JID"
-        curl -sfSL --header "$AUTH" "$API/jobs/$JID/artifacts" -o cell.zip
-        unzip -o -j cell.zip 'tests-report/raw-coverage/*' -d raw-coverage >/dev/null || true
-        unzip -o cell.zip 'tests-report/junit/*' -d . >/dev/null 2>&1 || true
-        rm -f cell.zip
+      PAGE=1
+      while :; do
+        JOBS=$(curl -sfS --header "$AUTH" "$API/pipelines/$CHILD/jobs?per_page=100&page=$PAGE")
+        JOB_IDS=$(printf '%s' "$JOBS" | jq -r '.[]|select(.name|startswith("tests:"))|.id')
+        for JID in $JOB_IDS; do
+          echo "  <- raw-coverage из ячейки job $JID"
+          curl -sfSL --header "$AUTH" "$API/jobs/$JID/artifacts" -o cell.zip
+          unzip -o -j cell.zip 'tests-report/raw-coverage/*' -d raw-coverage >/dev/null || true
+          unzip -o cell.zip 'tests-report/junit/*' -d . >/dev/null 2>&1 || true
+          rm -f cell.zip
+        done
+        if [ "$(printf '%s' "$JOBS" | jq 'length')" -lt 100 ]; then break; fi
+        PAGE=$((PAGE + 1))
       done
       TOOLS="/dotnet-tools/net$(dotnet --version 2>/dev/null|cut -d. -f1)"; export PATH="$TOOLS:$HOME/.dotnet/tools:$PATH"; mkdir -p "$TOOLS"
       _ensure(){ [ -x "$TOOLS/$1" ] && return 0; ( flock 9 2>/dev/null||true; [ -x "$TOOLS/$1" ] || dotnet tool install --tool-path "$TOOLS" "${@:2}" --configfile ./nuget.config||true ) 9>"$TOOLS/.lock"||true; [ -x "$TOOLS/$1" ] || dotnet tool install --global "${@:2}" --configfile ./nuget.config||true; return 0; }
