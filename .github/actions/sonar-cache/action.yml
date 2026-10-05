@@ -1,0 +1,51 @@
+name: Shared SonarQube components
+description: Restore versioned Sonar components shared by all repositories and install the pinned .NET scanner
+
+inputs:
+  server-version:
+    description: Version returned by the target SonarQube server
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve component versions
+      id: versions
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 "$ACTION_PATH/cache.py" info
+
+    - name: Cache SonarQube components in the consuming repository
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.sonar/cache
+          ~/.sonar/resources
+          ~/.sonar/nuget
+          ~/.sonar/nuget.config
+        key: ${{ steps.versions.outputs.tag }}-${{ runner.os }}-${{ runner.arch }}-${{ inputs.server-version }}
+
+    - name: Restore shared SonarQube archive
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SERVER_VERSION: ${{ inputs.server-version }}
+      run: |
+        python3 "$ACTION_PATH/cache.py" restore \
+          --destination "$HOME/.sonar" \
+          --server-version "$SERVER_VERSION"
+
+    - name: Install pinned SonarQube scanner
+      shell: bash
+      env:
+        SCANNER_VERSION: ${{ steps.versions.outputs.scanner-version }}
+      run: |
+        args=(--global dotnet-sonarscanner --version "$SCANNER_VERSION")
+        if [[ -f "$HOME/.sonar/nuget/dotnet-sonarscanner.$SCANNER_VERSION.nupkg" ]]; then
+          args+=(--configfile "$HOME/.sonar/nuget.config")
+        fi
+        dotnet tool install "${args[@]}"
+        echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"

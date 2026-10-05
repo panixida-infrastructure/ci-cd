@@ -1,0 +1,82 @@
+name: Publish shared Sonar cache
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-shared-sonar-cache
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve component versions
+        id: versions
+        run: python3 .github/actions/sonar-cache/cache.py info
+
+      - name: Check for an existing immutable archive
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versions.outputs.tag }}
+        run: |
+          # A failed API request must not be mistaken for an absent release.
+          releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases")"
+          if jq -e --arg tag "$TAG" '.[] | select(.tag_name == $tag and .draft)' <<< "$releases" >/dev/null; then
+            echo "::error::An unfinished draft exists for $TAG. Remove the draft release and retry."
+            exit 1
+          fi
+          if jq -e --arg tag "$TAG" '.[] | select(.tag_name == $tag)' <<< "$releases" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build archive from the official SonarQube image
+        if: steps.release.outputs.exists != 'true'
+        run: bash .github/actions/sonar-cache/build.sh "$RUNNER_TEMP/sonar-archive"
+
+      - name: Verify archive restoration
+        if: steps.release.outputs.exists != 'true'
+        env:
+          SERVER_VERSION: ${{ steps.versions.outputs.server-version }}
+        run: |
+          python3 .github/actions/sonar-cache/cache.py restore \
+            --source "$RUNNER_TEMP/sonar-archive" \
+            --destination "$RUNNER_TEMP/sonar-restored" \
+            --server-version "$SERVER_VERSION"
+
+      - name: Publish immutable release assets
+        if: steps.release.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versions.outputs.tag }}
+          COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          cat > "$RUNNER_TEMP/sonar-release-notes.md" <<'NOTES'
+          Shared SonarScanner engine, bundled analyzers, Roslyn resources and pinned
+          .NET scanner package. This archive contains upstream components only.
+          See manifest.json for versions, image digest, plugin hashes and file checksums.
+          See the SonarQube section in README.md for updates and rollback.
+          NOTES
+          # Upload while draft so consumers never observe a partially uploaded archive.
+          gh release create "$TAG" "$RUNNER_TEMP/sonar-archive/"* \
+            --target "$COMMIT" --title "$TAG" --draft \
+            --notes-file "$RUNNER_TEMP/sonar-release-notes.md"
+          gh release edit "$TAG" --draft=false --latest=false
