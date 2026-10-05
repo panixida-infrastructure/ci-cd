@@ -1,7 +1,8 @@
 .postman_tests:
+  interruptible: true
   image: node:20-alpine
   environment:
-    name: $DEPLOY_ENV  
+    name: $DEPLOY_ENV
   variables:
     REPORT_DIRECTORY: "tests-report"
   script:
@@ -9,7 +10,7 @@
     - apk add --no-cache curl
     - npm i -g newman newman-reporter-htmlextra
     - mkdir -p "$REPORT_DIRECTORY" newman
-    
+
     - |
       HOST_IP=$(ip -4 route show default | awk '{print $3}')
       echo "Host IP: $HOST_IP"
@@ -37,7 +38,7 @@
         --reporter-htmlextra-export $REPORT_DIRECTORY/tests-report.html
   artifacts:
     when: always
-    expire_in: 1 days 
+    expire_in: 1 days
     paths:
       - "tests-report/tests-report.html"
     reports:

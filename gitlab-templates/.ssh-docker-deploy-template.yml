@@ -1,6 +1,7 @@
-.ssh_deploy:
+.ssh_deploy_old:
   environment:
     name: $DEPLOY_ENV
+  resource_group: $SERVICE_NAME-$DEPLOY_ENV
   script:
     - echo "Starting to deploy"
     - SERVER_IP_ENV=$(eval echo \$SERVER_IP_${ENV_SUFFIX})
@@ -15,4 +16,25 @@
         docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY;
         docker pull $IMAGE_REGISTRY_PATH;
         docker container rm -f $SERVICE_NAME_ENV || true;
-        docker run -d -i --name $SERVICE_NAME_ENV --env-file .env --network=npm_default --memory=2g --restart=always --volume $SERVER_WWWROOT_SERVICE_FOLDER:$SERVICE_WWWROOT_FOLDER --volume $SERVER_SERVICE_FOLDER/files:/app/files $IMAGE_REGISTRY_PATH;"
+        docker run -d -i --name $SERVICE_NAME_ENV --env-file .env --network=npm_default --memory=2g --restart=always --log-opt max-size=50m --log-opt max-file=5 --volume $SERVER_WWWROOT_SERVICE_FOLDER:$SERVICE_WWWROOT_FOLDER --volume $SERVER_SERVICE_FOLDER/files:/app/files $IMAGE_REGISTRY_PATH;"
+.ssh_deploy:
+  image:
+    name: raesene/alpine-nettools
+    entrypoint: [""]
+  environment:
+    name: $DEPLOY_ENV
+  resource_group: $SERVICE_NAME-$DEPLOY_ENV
+  script:
+    - echo "Starting to deploy"
+    - SERVER_IP_ENV=$(eval echo \$SERVER_IP_${ENV_SUFFIX})
+    - SSH_PRIVATE_KEY_ENV=$(eval echo \$SSH_PRIVATE_KEY_${ENV_SUFFIX})
+    - chmod og= $SSH_PRIVATE_KEY_ENV
+    - ENV_FILE=$(eval echo \$env${CONTUR_NAME}_${ENV_SUFFIX})
+    - ssh -i $SSH_PRIVATE_KEY_ENV -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP_ENV "mkdir -p $SERVER_SERVICE_FOLDER; mkdir -p $SERVER_WWWROOT_SERVICE_FOLDER"
+    - ssh -i $SSH_PRIVATE_KEY_ENV -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP_ENV "cd $SERVER_SERVICE_FOLDER; touch .env"
+    - scp -i $SSH_PRIVATE_KEY_ENV -o StrictHostKeyChecking=no $ENV_FILE $SERVER_USER@$SERVER_IP_ENV:$SERVER_SERVICE_FOLDER/.env
+    - ssh -i $SSH_PRIVATE_KEY_ENV -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP_ENV "cd $SERVER_SERVICE_FOLDER;
+        docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY &&
+        docker pull $IMAGE_REGISTRY_PATH &&
+        (docker container rm -f $SERVICE_NAME_ENV || true) &&
+        docker run -d -i --name $SERVICE_NAME_ENV --env-file .env --network=npm_default --memory=2g --restart=always --log-opt max-size=50m --log-opt max-file=5 --volume $SERVER_WWWROOT_SERVICE_FOLDER:$SERVICE_WWWROOT_FOLDER --volume $SERVER_SERVICE_FOLDER/files:/app/files $EXTRA_VOLUMES $EXTRA_RUN_ARGS $IMAGE_REGISTRY_PATH;"

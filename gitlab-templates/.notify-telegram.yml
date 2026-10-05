@@ -1,4 +1,4 @@
-.notify_telegram:
+.notify_telegram_old:
   image: alpine/curl:latest
   before_script:
     - apk add --no-cache curl jq
@@ -6,14 +6,13 @@
     - |
       set -euo pipefail
 
-      # --- Список задач пайплайна ---
       JOBS=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
         "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs")
 
-      FAILED_JOBS=$(echo "$JOBS" | jq -r '.[] | select(.status == "failed") | .name' | paste -sd ', \n ' -)
-      SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '.[] | select(.status == "success") | .name' | paste -sd ', \n ' -)
-      CANCELED_JOBS=$(echo "$JOBS" | jq -r '.[] | select(.status == "canceled") | .name' | paste -sd ', \n ' -)
-      SKIPPED_JOBS=$(echo "$JOBS" | jq -r '.[] | select(.status == "skipped") | .name' | paste -sd ', \n ' -)
+      FAILED_JOBS=$(echo "$JOBS" | jq -r '[.[] | select(.status == "failed") | .name] | join(", ")')
+      SUCCESSFUL_JOBS=$(echo "$JOBS" | jq -r '[.[] | select(.status == "success") | .name] | join(", ")')
+      CANCELED_JOBS=$(echo "$JOBS" | jq -r '[.[] | select(.status == "canceled") | .name] | join(", ")')
+      SKIPPED_JOBS=$(echo "$JOBS" | jq -r '[.[] | select(.status == "skipped") | .name] | join(", ")')
 
       DETAILS=""
       if [ -n "$SUCCESSFUL_JOBS" ]; then
@@ -29,25 +28,21 @@
         DETAILS="${DETAILS} \n ⏭️ *Пропущенные задачи:* \n ${SKIPPED_JOBS} \n "
       fi
 
-      # --- Общий статус ---
       if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
-        STATUS="✅ Пайплайн *${CI_PIPELINE_ID}* завершился *успешно*."
+        STATUS="✅ Пайплайн [${CI_PIPELINE_ID}](${CI_PIPELINE_URL}) завершился *успешно*."
       else
-        STATUS="❌ Пайплайн *${CI_PIPELINE_ID}* завершился с *ошибками*."
+        STATUS="❌ Пайплайн [${CI_PIPELINE_ID}](${CI_PIPELINE_URL}) завершился с *ошибками*."
       fi
 
-      # --- Достаём информацию о MR ---
       MR_IID="${CI_MERGE_REQUEST_IID:-}"
       MR_INFO=""
       if [ -n "$MR_IID" ]; then
-        # MR pipeline
         MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_IID")
       else
-        # post-merge / обычный pipeline — ищем MR по коммиту
         MR_FROM_COMMIT=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/merge_requests")
-        MR_IID=$(echo "$MR_FROM_COMMIT" | jq -r '.[0].iid // empty')
+        MR_IID=$(echo "$MR_FROM_COMMIT" | jq -r --arg ref "$CI_COMMIT_REF_NAME" '[.[] | select(.target_branch == $ref)] | first | .iid // empty')
         if [ -n "$MR_IID" ]; then
           MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
             "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_IID")
@@ -65,7 +60,6 @@
         MR_URL=$(echo "$MR_INFO" | jq -r '.web_url // empty')
       fi
 
-      # --- Формируем блок автора/мерджера ---
       AUTHOR_BLOCK=""
       if [ -n "$MR_AUTHOR" ]; then
         AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Автор MR: *${MR_AUTHOR}*"
@@ -74,17 +68,14 @@
         AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Замержил: *${MR_MERGED_BY}*"
       fi
       if [ -z "$AUTHOR_BLOCK" ]; then
-        # Нет MR (или не нашли) — показываем инициатора пайплайна
         AUTHOR_BLOCK="\n- Инициатор: *${GITLAB_USER_NAME}*"
       fi
 
-      # --- (опционально) Ссылка на MR, если нашли ---
       MR_LINE=""
       if [ -n "$MR_URL" ] && [ -n "$MR_TITLE" ]; then
         MR_LINE="\n- MR: [${MR_TITLE}](${MR_URL})"
       fi
 
-      # --- Получаем URL окружения из GitLab API ---
       ENV_URL=""
       if [ -n "$DEPLOY_ENV" ]; then
         ENVIRONMENTS_JSON=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
@@ -99,14 +90,149 @@
         ENV_LINE="\n- URL: (не найдено)"
       fi
 
-      # --- Итоговый текст ---
       TEXT="$STATUS \n${DETAILS} 📝 *Информация о сборке:* \n- Проект: *${CI_PROJECT_NAME}* \n- Ветка: *${CI_COMMIT_REF_NAME}*${AUTHOR_BLOCK}${MR_LINE}${ENV_LINE}"
 
-      # --- Отправляем в Telegram ---
-      curl -s --header 'Content-Type: application/json' \
+      if [ -n "${TELEGRAM_EGRESS_PROXY:-}" ]; then TG_NET="--proxy ${TELEGRAM_EGRESS_PROXY}"; else TG_NET="--resolve api.telegram.org:443:149.154.167.220"; fi
+      curl -s $TG_NET \
+        --header 'Content-Type: application/json' \
         --request 'POST' \
         --data "{\"chat_id\": \"$TELEGRAM_CHAT_ID\", \"text\": \"$TEXT\", \"parse_mode\": \"Markdown\"}" \
-        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" 
+        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+  when: always
+  allow_failure: true
+  dependencies: []
+
+.notify_telegram:
+  image:
+    name: raesene/alpine-nettools
+    entrypoint: [""]
+  before_script:
+    - apk add --no-cache bash
+  script:
+    - |
+      bash <<'EOF'
+      set -euo pipefail
+      NL=$'\n'
+      html_escape() {
+        printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
+      }
+      trap 'echo ">>> ERROR at line $LINENO: command returned $?" >&2' ERR
+      api_call() {
+        local url="$1"
+        local response
+        local http_code
+
+        response=$(curl --silent --write-out "%{http_code}" --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" "$url")
+        http_code="${response: -3}"
+        body="${response%???}"
+
+        if [ "$http_code" -ne 200 ]; then
+          echo "❌ API error $http_code for $url"
+          echo "Response: $body"
+          return 1
+        fi
+        echo "$body"
+      }
+
+      JOBS=$(api_call "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs")
+      BRIDGES=$(api_call "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges")
+      JOBS=$(jq -s 'add' <<<"$JOBS$BRIDGES")
+
+      if ! echo "$JOBS" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        echo "❌ Jobs response is not an array: $JOBS"
+        exit 1
+      fi
+
+      FAILED_JOBS=$(html_escape "$(echo "$JOBS" | jq -r '[.[] | select(.status == "failed") | .name] | join(", ")')")
+      SUCCESSFUL_JOBS=$(html_escape "$(echo "$JOBS" | jq -r '[.[] | select(.status == "success") | .name] | join(", ")')")
+      CANCELED_JOBS=$(html_escape "$(echo "$JOBS" | jq -r '[.[] | select(.status == "canceled") | .name] | join(", ")')")
+      SKIPPED_JOBS=$(html_escape "$(echo "$JOBS" | jq -r '[.[] | select(.status == "skipped") | .name] | join(", ")')")
+
+      DETAILS=""
+      if [ -n "$SUCCESSFUL_JOBS" ]; then
+        DETAILS="${DETAILS}${NL}✅ <b>Успешные задачи:</b>${NL}${SUCCESSFUL_JOBS}${NL}"
+      fi
+      if [ -n "$FAILED_JOBS" ]; then
+        DETAILS="${DETAILS}${NL}❌ <b>Неуспешные задачи:</b>${NL}${FAILED_JOBS}${NL}"
+      fi
+      if [ -n "$CANCELED_JOBS" ]; then
+        DETAILS="${DETAILS}${NL}🚫 <b>Отмененные задачи:</b>${NL}${CANCELED_JOBS}${NL}"
+      fi
+      if [ -n "$SKIPPED_JOBS" ]; then
+        DETAILS="${DETAILS}${NL}⏭️ <b>Пропущенные задачи:</b>${NL}${SKIPPED_JOBS}${NL}"
+      fi
+
+      if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
+        STATUS="✅ Пайплайн <a href=\"${CI_PIPELINE_URL}\"><b>${CI_PIPELINE_ID}</b></a> завершился <b>успешно</b>."
+      else
+        STATUS="❌ Пайплайн <a href=\"${CI_PIPELINE_URL}\"><b>${CI_PIPELINE_ID}</b></a> завершился с <b>ошибками</b>."
+      fi
+
+      MR_IID="${CI_MERGE_REQUEST_IID:-}"
+      MR_INFO=""
+      if [ -n "$MR_IID" ]; then
+        MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_IID")
+      else
+        MR_FROM_COMMIT=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/merge_requests")
+        MR_IID=$(echo "$MR_FROM_COMMIT" | jq -r --arg ref "$CI_COMMIT_REF_NAME" '[.[] | select(.target_branch == $ref)] | first | .iid // empty')
+        if [ -n "$MR_IID" ]; then
+          MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
+            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_IID")
+        fi
+      fi
+
+      MR_AUTHOR=""
+      MR_MERGED_BY=""
+      MR_TITLE=""
+      MR_URL=""
+      if [ -n "$MR_INFO" ]; then
+        MR_AUTHOR=$(html_escape "$(echo "$MR_INFO" | jq -r '.author.name // empty')")
+        MR_MERGED_BY=$(html_escape "$(echo "$MR_INFO" | jq -r '.merged_by.name // empty')")
+        MR_TITLE=$(html_escape "$(echo "$MR_INFO" | jq -r '.title // empty')")
+        MR_URL=$(html_escape "$(echo "$MR_INFO" | jq -r '.web_url // empty')")
+      fi
+
+      AUTHOR_BLOCK=""
+      if [ -n "$MR_AUTHOR" ]; then
+        AUTHOR_BLOCK="${AUTHOR_BLOCK}${NL}- Автор MR: <b>${MR_AUTHOR}</b>"
+      fi
+      if [ -n "$MR_MERGED_BY" ]; then
+        AUTHOR_BLOCK="${AUTHOR_BLOCK}${NL}- Замержил: <b>${MR_MERGED_BY}</b>"
+      fi
+      if [ -z "$AUTHOR_BLOCK" ]; then
+        AUTHOR_BLOCK="${NL}- Инициатор: <b>$(html_escape "${GITLAB_USER_NAME}")</b>"
+      fi
+
+      MR_LINE=""
+      if [ -n "$MR_URL" ] && [ -n "$MR_TITLE" ]; then
+        MR_LINE="${NL}- MR: <a href=\"${MR_URL}\">${MR_TITLE}</a>"
+      fi
+
+      ENV_URL=""
+      if [ -n "$DEPLOY_ENV" ]; then
+        ENVIRONMENTS_JSON=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
+            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/environments")
+
+        ENV_URL=$(html_escape "$(echo "$ENVIRONMENTS_JSON" | jq -r --arg NAME "$DEPLOY_ENV" '.[] | select(.name == $NAME) | .external_url // empty')")
+        fi
+
+      if [ -n "$ENV_URL" ]; then
+        ENV_LINE="${NL}- URL: <a href=\"${ENV_URL}\">${ENV_URL}</a>"
+      else
+        ENV_LINE="${NL}- URL: (не найдено)"
+      fi
+
+      TEXT="$STATUS${NL}${DETAILS}📝 <b>Информация о сборке:</b>${NL}- Проект: <b>$(html_escape "${CI_PROJECT_NAME}")</b>${NL}- Ветка: <b>$(html_escape "${CI_COMMIT_REF_NAME}")</b>${AUTHOR_BLOCK}${MR_LINE}${ENV_LINE}"
+
+      if [ -n "${TELEGRAM_EGRESS_PROXY:-}" ]; then TG_NET="--proxy ${TELEGRAM_EGRESS_PROXY}"; else TG_NET="--resolve api.telegram.org:443:149.154.167.220"; fi
+      curl -s $TG_NET \
+        --header 'Content-Type: application/json' \
+        --request 'POST' \
+        --data "$(jq -n --arg chat_id "$TELEGRAM_CHAT_ID" --arg text "$TEXT" '{chat_id: $chat_id, text: $text, parse_mode: "HTML"}')" \
+        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+      EOF
   when: always
   allow_failure: true
   dependencies: []

@@ -1,0 +1,19 @@
+.go_swagger_validate:
+  interruptible: true
+  image: golang:1.24
+  variables:
+    SWAGGER_MAIN_FILE: "cmd/tutor/main.go"
+    SWAGGER_OUTPUT_DIRECTORY: "docs"
+    SWAGGER_DOCUMENT_PATH: "docs/swagger.json"
+  before_script:
+    - set -euo pipefail
+    - go install github.com/swaggo/swag/cmd/swag@v1.16.6
+    - go install github.com/go-swagger/go-swagger/cmd/swagger@v0.32.3
+  script:
+    - swag init -g "$SWAGGER_MAIN_FILE" --output "$SWAGGER_OUTPUT_DIRECTORY"
+    - swagger validate "$SWAGGER_DOCUMENT_PATH"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - "$SWAGGER_DOCUMENT_PATH"

@@ -1,5 +1,144 @@
+.retry_infra: &retry_infra
+  max: 2
+  when:
+    - runner_system_failure
+    - stuck_or_timeout_failure
+    - scheduler_failure
+    - api_failure
+
 .build-sonar:
+  interruptible: true
   image: mcr.microsoft.com/dotnet/sdk:8.0
+  retry: *retry_infra
+  variables:
+    GIT_DEPTH: "0"
+    SONAR_EXCLUDE_TESTS: "true"
+    EXCLUSIONS_LIST: |
+      **/bin/**
+      **/obj/**
+      **/Migrations/**
+      **/wwwroot/**
+      **/nuget.config
+  script:
+    - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+
+    - |
+        SONAR_TOOLDIR="/dotnet-tools/net$(dotnet --version 2>/dev/null | cut -d. -f1)"
+        export PATH="$HOME/.dotnet/tools:$SONAR_TOOLDIR:$PATH"
+        mkdir -p "$SONAR_TOOLDIR"
+        ( flock 9 2>/dev/null||true; test -x "$SONAR_TOOLDIR/dotnet-sonarscanner" || dotnet tool install --tool-path "$SONAR_TOOLDIR" dotnet-sonarscanner||true ) 9>"$SONAR_TOOLDIR/.lock"||true
+        test -x "$SONAR_TOOLDIR/dotnet-sonarscanner" || dotnet tool install --global dotnet-sonarscanner || true
+
+    - |
+        if [ -n "$EXCLUSIONS_LIST" ]; then
+          SONAR_EXCLUSIONS="$(echo "$EXCLUSIONS_LIST" | grep -v '^$' | tr '\n' ',' | sed 's/,$//')"
+          echo "🔍 Using exclusions: $SONAR_EXCLUSIONS"
+        fi
+
+    - >
+      dotnet-sonarscanner begin
+      /k:"$SONAR_PATH"
+      /d:sonar.token="$SONAR_TOKEN"
+      /d:sonar.host.url="$SONAR_HOST_URL"
+      ${SONAR_EXCLUSIONS:+/d:sonar.exclusions="$SONAR_EXCLUSIONS"}
+      /d:sonar.qualitygate.wait=true
+      /d:sonar.qualitygate.timeout=1800
+      ${JAVA_HOME:+/d:sonar.scanner.skipJreProvisioning=true}
+
+    - |
+        SONAR_SLNX="$(ls *.slnx 2>/dev/null | head -n1)" || true
+        SONAR_SLN="$(ls *.sln 2>/dev/null | head -n1)" || true
+
+        is_test_csproj() {
+          [ -f "$1" ] || return 1
+          grep -qE 'Microsoft\.NET\.Test\.Sdk|Microsoft\.Testing\.(Platform|Extensions)' "$1" && return 0
+          if grep -qE '<OutputType>[[:space:]]*[Ee]xe' "$1" && grep -qiE 'xunit|nunit' "$1"; then return 0; fi
+          grep -qiE 'MSTest\.Test(Framework|Adapter)' "$1" && return 0
+          grep -qE 'PackageReference[^>]*"TUnit"' "$1" && return 0
+          return 1
+        }
+
+        BUILT=0
+        if [ "$SONAR_EXCLUDE_TESTS" = "true" ] && [ -n "$SONAR_SLNX" ]; then
+          HAD_TEST=0
+          EXCLUDED=""
+          SKIP=0
+          : > sonar-src.slnx
+          while IFS= read -r line; do
+            if [ "$SKIP" = "1" ]; then
+              case "$line" in *"</Project>"*) SKIP=0;; esac
+              continue
+            fi
+            path="$(printf '%s' "$line" | grep -oE 'Path="[^"]+\.csproj"' | sed 's/^Path="//; s/"$//' | tr '\\' '/' || true)"
+            if [ -n "$path" ] && is_test_csproj "$path"; then
+              HAD_TEST=1; EXCLUDED="$EXCLUDED $path"
+              case "$line" in *"/>"*) ;; *) SKIP=1;; esac
+              continue
+            fi
+            printf '%s\n' "$line" >> sonar-src.slnx
+          done < "$SONAR_SLNX"
+          if [ "$HAD_TEST" = "1" ]; then
+            echo "build-sonar: исключаю тест-проекты из $SONAR_SLNX (по содержимому csproj):"
+            for x in $EXCLUDED; do echo "  - $x"; done
+            dotnet build sonar-src.slnx
+            BUILT=1
+          fi
+        elif [ "$SONAR_EXCLUDE_TESTS" = "true" ] && [ -n "$SONAR_SLN" ]; then
+          dotnet sln "$SONAR_SLN" list 2>/dev/null | grep -iE '\.csproj$' | tr '\\' '/' > /tmp/proj_all.txt || true
+          : > /tmp/proj_src.txt; : > /tmp/proj_tests.txt
+          while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            if is_test_csproj "$p"; then echo "$p" >> /tmp/proj_tests.txt; else echo "$p" >> /tmp/proj_src.txt; fi
+          done < /tmp/proj_all.txt
+          if [ -s /tmp/proj_tests.txt ] && [ -s /tmp/proj_src.txt ]; then
+            echo "build-sonar: исключаю тест-проекты из $SONAR_SLN (по содержимому csproj):"
+            sed 's/^/  - /' /tmp/proj_tests.txt
+            rm -f sonar-src.sln
+            dotnet new sln -n sonar-src >/dev/null
+            xargs -d '\n' -r dotnet sln sonar-src.sln add < /tmp/proj_src.txt >/dev/null
+            dotnet build sonar-src.sln
+            BUILT=1
+          fi
+        fi
+
+        if [ "$BUILT" = "0" ]; then
+          dotnet build ${SONAR_SLNX:-$SONAR_SLN}
+        fi
+    - "dotnet-sonarscanner end /d:sonar.token=\"$SONAR_TOKEN\""
+
+.build-sonar-go:
+  interruptible: true
+  image: eclipse-temurin:17-jre
+  retry: *retry_infra
+  variables:
+    SONAR_SCANNER_CLI_VERSION: "7.3.0.5189"
+  script:
+    - |
+        set -eu
+        VER="$SONAR_SCANNER_CLI_VERSION"
+        TOOLROOT="/sonar/.scanner-cli"
+        if mkdir -p "$TOOLROOT" 2>/dev/null && [ -w "$TOOLROOT" ]; then
+          echo "sonar-go: кэш сканера в persistent /sonar"
+        else
+          TOOLROOT="$CI_PROJECT_DIR/.scanner-cli"
+          export SONAR_USER_HOME="$CI_PROJECT_DIR/.sonar"
+          mkdir -p "$TOOLROOT" "$SONAR_USER_HOME"
+          echo "sonar-go: /sonar недоступен на запись — фолбэк в воркспейс"
+        fi
+        SCANNER_HOME="$TOOLROOT/sonar-scanner-$VER"
+        if [ ! -x "$SCANNER_HOME/bin/sonar-scanner" ]; then
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends curl unzip
+          curl -sSfL "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$VER.zip" -o /tmp/sonar-scanner.zip
+          unzip -q -o /tmp/sonar-scanner.zip -d "$TOOLROOT"
+        fi
+        export PATH="$SCANNER_HOME/bin:$PATH"
+        sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL"
+
+.build-sonar-fast:
+  interruptible: true
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  retry: *retry_infra
   variables:
     GIT_DEPTH: "0"
     EXCLUSIONS_LIST: |
@@ -8,11 +147,11 @@
       **/Migrations/**
       **/wwwroot/**
       **/nuget.config
-  script: 
+  script:
     - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
 
-    - "dotnet tool install --global dotnet-sonarscanner"
-    - "export PATH=\"$PATH:$HOME/.dotnet/tools\""
+    - dotnet tool install --global dotnet-sonarscanner --configfile ./nuget.config || true
+    - export PATH="$PATH:$HOME/.dotnet/tools"
 
     - |
         if [ -n "$EXCLUSIONS_LIST" ]; then
@@ -28,11 +167,12 @@
       ${SONAR_EXCLUSIONS:+/d:sonar.exclusions="$SONAR_EXCLUSIONS"}
       /d:sonar.qualitygate.wait=true
       /d:sonar.qualitygate.timeout=1800
+      /d:sonar.javascript.skip=true
+      /d:sonar.web.skip=true
+      /d:sonar.text.skip=true
 
-    - "dotnet build"
-    - "dotnet sonarscanner end /d:sonar.token=\"$SONAR_TOKEN\""
+    - dotnet restore --verbosity quiet
 
-.build-sonar-go:
-  image:  sonarsource/sonar-scanner-cli:11
-  script: 
-    - sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}"
+    - dotnet build --no-restore --configuration Release --verbosity quiet
+
+    - dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"

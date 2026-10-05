@@ -1,0 +1,32 @@
+.nuget_publish_template:
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - scheduler_failure
+      - api_failure
+  script:
+        - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
+
+        - |
+          NO_BUILD_PARAM=""
+          SKIP_BUILD_ON_PACK="${SKIP_BUILD_ON_PACK:-false}"
+          if [[ "${SKIP_BUILD_ON_PACK,,}" == "true" ]]; then
+            NO_BUILD_PARAM="--no-build"
+            echo "⚠️  Using --no-build mode. Ensure all ProjectReference dependencies were pre-built!"
+          else
+            echo "ℹ️  Build will be performed during pack (recommended for projects with ProjectReference)"
+          fi
+
+        - dotnet restore "${NUGET_BUILD_PROJECT:-${NUGET_PROJECT}}"
+        - dotnet nuget add source "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/nuget/index.json" --name gitlab --username gitlab-ci-token --password "$CI_JOB_TOKEN" --store-password-in-clear-text --configfile "$PROJECT_FOLDER/nuget.config"
+        - dotnet build "${NUGET_BUILD_PROJECT:-${NUGET_PROJECT}}" -c Release -v minimal
+        - dotnet pack "${NUGET_PACK_PROJECT:-${NUGET_PROJECT}}" -c Release ${NO_BUILD_PARAM} -o ./nupkgs
+        - dotnet nuget push "nupkgs/*.nupkg" --source "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/nuget/index.json" --api-key "$CI_JOB_TOKEN" --skip-duplicate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "development" || $CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "main")'
+      when: manual
+      allow_failure: false
+    - when: never

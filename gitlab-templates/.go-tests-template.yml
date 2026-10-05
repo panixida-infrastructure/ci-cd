@@ -1,0 +1,77 @@
+.go_tests:
+  interruptible: true
+  image: golang:1.24
+  variables:
+    REPORT_DIRECTORY: "tests-report"
+    COVERAGE_DIRECTORY: "tests-report/coverage"
+    COVERAGE_PACKAGE_PATTERN: "./..."
+    COVERAGE_EXCLUDE_PATTERN: ""
+  coverage: '/Line coverage[:\s]+(\d+(?:\.\d+)?)%/'
+  before_script:
+    - set -euo pipefail
+    - mkdir -p "$REPORT_DIRECTORY" "$COVERAGE_DIRECTORY"
+    - go install gotest.tools/gotestsum@v1.13.0
+    - go install github.com/boumenot/gocover-cobertura@v1.3.0
+  script:
+    - go build ./...
+    - |
+      TEST_PACKAGES="$(go list ./... | xargs)"
+      test -n "$TEST_PACKAGES"
+
+      COVERAGE_PACKAGES="$(for packagePattern in $COVERAGE_PACKAGE_PATTERN; do
+        go list "$packagePattern"
+      done | sort -u | awk -v exclude="$COVERAGE_EXCLUDE_PATTERN" '
+        exclude == "" || $0 !~ exclude {
+          if (packageCount > 0) {
+            printf ","
+          }
+          printf "%s", $0
+          packageCount++
+        }
+      ')"
+      test -n "$COVERAGE_PACKAGES"
+      echo "Coverage scope: $COVERAGE_PACKAGE_PATTERN"
+
+      set +e
+      gotestsum \
+        --format testname \
+        --junitfile "$REPORT_DIRECTORY/junit.xml" \
+        --jsonfile "$REPORT_DIRECTORY/tests.json" \
+        -- \
+        -count=1 \
+        -covermode=atomic \
+        -coverpkg="$COVERAGE_PACKAGES" \
+        -coverprofile="$COVERAGE_DIRECTORY/coverage.out" \
+        $TEST_PACKAGES | tee "$REPORT_DIRECTORY/summary.txt"
+      TEST_EXIT_CODE="${PIPESTATUS[0]}"
+      set -e
+
+      test -s "$COVERAGE_DIRECTORY/coverage.out"
+      go tool cover -html="$COVERAGE_DIRECTORY/coverage.out" -o "$COVERAGE_DIRECTORY/coverage.html"
+      gocover-cobertura < "$COVERAGE_DIRECTORY/coverage.out" > "$COVERAGE_DIRECTORY/Cobertura.xml"
+
+      LINE_COVERAGE=$(go tool cover -func="$COVERAGE_DIRECTORY/coverage.out" | awk '/^total:/ {gsub("%", "", $3); print $3}')
+      echo "Line coverage: ${LINE_COVERAGE}% (threshold: ${COVERAGE_THRESHOLD}%)"
+
+      COVERAGE_EXIT_CODE=0
+      awk -v coverage="$LINE_COVERAGE" -v threshold="$COVERAGE_THRESHOLD" 'BEGIN {
+        if (coverage + 0 < threshold + 0) {
+          printf "Coverage %.2f%% is below required %.2f%%\n", coverage, threshold
+          exit 1
+        }
+      }' || COVERAGE_EXIT_CODE=$?
+
+      if [ "$TEST_EXIT_CODE" -ne 0 ]; then
+        exit "$TEST_EXIT_CODE"
+      fi
+      exit "$COVERAGE_EXIT_CODE"
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - "tests-report/"
+    reports:
+      junit: "tests-report/junit.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "tests-report/coverage/Cobertura.xml"
