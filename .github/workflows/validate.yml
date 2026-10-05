@@ -53,6 +53,12 @@ jobs:
             --set image.tag=1 \
             > /dev/null
 
+      - name: Test application persistence
+        run: |
+          python3 -m venv /tmp/application-chart-tests
+          /tmp/application-chart-tests/bin/pip install PyYAML==6.0.3
+          /tmp/application-chart-tests/bin/python -B -m unittest discover -s tests -p 'test_application_persistence.py' -v
+
   notify:
     if: ${{ always() && github.event_name == 'push' && github.ref_name == 'main' }}
     needs: [ actionlint, helm ]

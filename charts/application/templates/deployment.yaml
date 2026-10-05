@@ -8,6 +8,14 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.persistence.enabled }}
+  {{- if ne (int .Values.replicaCount) 1 }}
+  {{- fail "persistence.enabled requires replicaCount=1 for the ReadWriteOnce volume" }}
+  {{- end }}
+  strategy:
+    type: Recreate
+    rollingUpdate: null
+  {{- end }}
   selector:
     matchLabels:
       {{- include "application.selectorLabels" . | nindent 6 }}
@@ -72,6 +80,17 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ required "persistence.mountPath is required when persistence is enabled" .Values.persistence.mountPath | quote }}
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "application.persistentVolumeClaimName" . }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

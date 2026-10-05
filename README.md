@@ -1,6 +1,30 @@
 # CI-CD
 Тут хранятся общие шаблоны для пайплайнов, чтобы не дублировать код в каждом репозитории.
 
+## Application chart persistence
+
+The `charts/application` chart can provision one namespace-scoped ReadWriteOnce
+PVC and mount it into the application container:
+
+```yaml
+persistence:
+  enabled: true
+  mountPath: /var/lib/application
+  storageClass: nvme.network-drives.csi.timeweb.cloud
+  size: 10Gi
+podSecurityContext:
+  fsGroup: 1654
+  fsGroupChangePolicy: OnRootMismatch
+```
+
+Persistence is disabled by default. When enabled, the chart requires one replica
+and uses `Recreate` updates to avoid concurrent attachment on different nodes.
+Set a suitable `fsGroup` for the image's non-root user. The PVC is retained on Helm
+uninstall and Argo CD prune/deletion; deleting it manually can permanently destroy
+application data. This feature does not encrypt stored data or create backups.
+The PVC and Deployment share sync wave `0` so `WaitForFirstConsumer` storage classes
+can provision the volume after the pod has been scheduled.
+
 ## SSH deploy folders
 
 GitHub SSH deploy actions place files under `/opt` by default.

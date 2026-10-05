@@ -1,5 +1,11 @@
 replicaCount: 1
 
+persistence:
+  enabled: false
+  mountPath: ""
+  storageClass: ""
+  size: 1Gi
+
 nameOverride: ""
 fullnameOverride: ""
 component: api

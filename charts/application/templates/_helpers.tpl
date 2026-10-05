@@ -51,3 +51,7 @@ app.kubernetes.io/component: {{ .Values.component | quote }}
 {{- define "application.secretStoreName" -}}
 {{- printf "%s-openbao" (include "application.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
+{{- define "application.persistentVolumeClaimName" -}}
+{{- printf "%s-data" (include "application.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
