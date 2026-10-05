@@ -12,7 +12,7 @@
   retry: *retry_infra
   script:
     - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
-    - dotnet tool install -g dotnet-format || true --configfile ./nuget.config
+    - dotnet tool install -g dotnet-format --configfile ./nuget.config || true
     - export PATH="$PATH:$HOME/.dotnet/tools"
     - dotnet tool restore
     - dotnet format --verify-no-changes
@@ -23,7 +23,7 @@
   retry: *retry_infra
   script:
     - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
-    - dotnet tool install -g dotnet-format || true --configfile ./nuget.config
+    - dotnet tool install -g dotnet-format --configfile ./nuget.config || true
     - export PATH="$PATH:$HOME/.dotnet/tools"
     - dotnet restore --verbosity quiet
     - dotnet format --verify-no-changes --exclude **/Tests/** --exclude **/*Migrator/** --exclude **/CodeGeneration/**

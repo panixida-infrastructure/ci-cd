@@ -29,6 +29,17 @@ jobs:
           patterns: |
             :(glob).github/actions/*/action.yml
 
+  gitlab-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install template test dependencies
+        run: python3 -m pip install -r tests/requirements.txt
+
+      - name: Validate GitLab templates and regression scenarios
+        run: python3 -m unittest discover -s tests -p test_gitlab_templates.py -v
+
   helm:
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +66,7 @@ jobs:
 
   notify:
     if: ${{ always() && github.event_name == 'push' && github.ref_name == 'main' }}
-    needs: [ actionlint, helm ]
+    needs: [ actionlint, gitlab-templates, helm ]
     uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/notify-telegram.yml@main
     with:
       event-name: ${{ github.event_name }}

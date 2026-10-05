@@ -6,7 +6,6 @@
     - |
       set -euo pipefail
 
-      # --- Список задач пайплайна ---
       JOBS=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
         "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs")
 
@@ -29,22 +28,18 @@
         DETAILS="${DETAILS} \n ⏭️ *Пропущенные задачи:* \n ${SKIPPED_JOBS} \n "
       fi
 
-      # --- Общий статус ---
       if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
         STATUS="✅ Пайплайн [${CI_PIPELINE_ID}](${CI_PIPELINE_URL}) завершился *успешно*."
       else
         STATUS="❌ Пайплайн [${CI_PIPELINE_ID}](${CI_PIPELINE_URL}) завершился с *ошибками*."
       fi
 
-      # --- Достаём информацию о MR ---
       MR_IID="${CI_MERGE_REQUEST_IID:-}"
       MR_INFO=""
       if [ -n "$MR_IID" ]; then
-        # MR pipeline
         MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_IID")
       else
-        # post-merge / обычный pipeline — ищем MR по коммиту
         MR_FROM_COMMIT=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/merge_requests")
         MR_IID=$(echo "$MR_FROM_COMMIT" | jq -r --arg ref "$CI_COMMIT_REF_NAME" '[.[] | select(.target_branch == $ref)] | first | .iid // empty')
@@ -65,7 +60,6 @@
         MR_URL=$(echo "$MR_INFO" | jq -r '.web_url // empty')
       fi
 
-      # --- Формируем блок автора/мерджера ---
       AUTHOR_BLOCK=""
       if [ -n "$MR_AUTHOR" ]; then
         AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Автор MR: *${MR_AUTHOR}*"
@@ -74,17 +68,14 @@
         AUTHOR_BLOCK="${AUTHOR_BLOCK}\n- Замержил: *${MR_MERGED_BY}*"
       fi
       if [ -z "$AUTHOR_BLOCK" ]; then
-        # Нет MR (или не нашли) — показываем инициатора пайплайна
         AUTHOR_BLOCK="\n- Инициатор: *${GITLAB_USER_NAME}*"
       fi
 
-      # --- (опционально) Ссылка на MR, если нашли ---
       MR_LINE=""
       if [ -n "$MR_URL" ] && [ -n "$MR_TITLE" ]; then
         MR_LINE="\n- MR: [${MR_TITLE}](${MR_URL})"
       fi
 
-      # --- Получаем URL окружения из GitLab API ---
       ENV_URL=""
       if [ -n "$DEPLOY_ENV" ]; then
         ENVIRONMENTS_JSON=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
@@ -99,10 +90,8 @@
         ENV_LINE="\n- URL: (не найдено)"
       fi
 
-      # --- Итоговый текст ---
       TEXT="$STATUS \n${DETAILS} 📝 *Информация о сборке:* \n- Проект: *${CI_PROJECT_NAME}* \n- Ветка: *${CI_COMMIT_REF_NAME}*${AUTHOR_BLOCK}${MR_LINE}${ENV_LINE}"
 
-      # --- Отправляем в Telegram ---
       if [ -n "${TELEGRAM_EGRESS_PROXY:-}" ]; then TG_NET="--proxy ${TELEGRAM_EGRESS_PROXY}"; else TG_NET="--resolve api.telegram.org:443:149.154.167.220"; fi
       curl -s $TG_NET \
         --header 'Content-Type: application/json' \
@@ -127,9 +116,7 @@
       html_escape() {
         printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'
       }
-      # --- ловушка ошибок (без set -x: трассировка печатала бы bot-token в лог) ---
       trap 'echo ">>> ERROR at line $LINENO: command returned $?" >&2' ERR
-      # --- Список задач пайплайна ---
       api_call() {
         local url="$1"
         local response
@@ -147,7 +134,6 @@
         echo "$body"
       }
 
-      # --- Получение списка задач пайплайна ---
       JOBS=$(api_call "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs")
       BRIDGES=$(api_call "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges")
       JOBS=$(jq -s 'add' <<<"$JOBS$BRIDGES")
@@ -176,22 +162,18 @@
         DETAILS="${DETAILS}${NL}⏭️ <b>Пропущенные задачи:</b>${NL}${SKIPPED_JOBS}${NL}"
       fi
 
-      # --- Общий статус ---
       if [ -z "$FAILED_JOBS" ] && [ -z "$CANCELED_JOBS" ]; then
         STATUS="✅ Пайплайн <a href=\"${CI_PIPELINE_URL}\"><b>${CI_PIPELINE_ID}</b></a> завершился <b>успешно</b>."
       else
         STATUS="❌ Пайплайн <a href=\"${CI_PIPELINE_URL}\"><b>${CI_PIPELINE_ID}</b></a> завершился с <b>ошибками</b>."
       fi
 
-      # --- Достаём информацию о MR ---
       MR_IID="${CI_MERGE_REQUEST_IID:-}"
       MR_INFO=""
       if [ -n "$MR_IID" ]; then
-        # MR pipeline
         MR_INFO=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_IID")
       else
-        # post-merge / обычный pipeline — ищем MR по коммиту
         MR_FROM_COMMIT=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
           "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/commits/$CI_COMMIT_SHA/merge_requests")
         MR_IID=$(echo "$MR_FROM_COMMIT" | jq -r --arg ref "$CI_COMMIT_REF_NAME" '[.[] | select(.target_branch == $ref)] | first | .iid // empty')
@@ -212,7 +194,6 @@
         MR_URL=$(html_escape "$(echo "$MR_INFO" | jq -r '.web_url // empty')")
       fi
 
-      # --- Формируем блок автора/мерджера ---
       AUTHOR_BLOCK=""
       if [ -n "$MR_AUTHOR" ]; then
         AUTHOR_BLOCK="${AUTHOR_BLOCK}${NL}- Автор MR: <b>${MR_AUTHOR}</b>"
@@ -221,17 +202,14 @@
         AUTHOR_BLOCK="${AUTHOR_BLOCK}${NL}- Замержил: <b>${MR_MERGED_BY}</b>"
       fi
       if [ -z "$AUTHOR_BLOCK" ]; then
-        # Нет MR (или не нашли) — показываем инициатора пайплайна
         AUTHOR_BLOCK="${NL}- Инициатор: <b>$(html_escape "${GITLAB_USER_NAME}")</b>"
       fi
 
-      # --- (опционально) Ссылка на MR, если нашли ---
       MR_LINE=""
       if [ -n "$MR_URL" ] && [ -n "$MR_TITLE" ]; then
         MR_LINE="${NL}- MR: <a href=\"${MR_URL}\">${MR_TITLE}</a>"
       fi
 
-      # --- Получаем URL окружения из GitLab API ---
       ENV_URL=""
       if [ -n "$DEPLOY_ENV" ]; then
         ENVIRONMENTS_JSON=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" \
@@ -246,10 +224,8 @@
         ENV_LINE="${NL}- URL: (не найдено)"
       fi
 
-      # --- Итоговый текст ---
       TEXT="$STATUS${NL}${DETAILS}📝 <b>Информация о сборке:</b>${NL}- Проект: <b>$(html_escape "${CI_PROJECT_NAME}")</b>${NL}- Ветка: <b>$(html_escape "${CI_COMMIT_REF_NAME}")</b>${AUTHOR_BLOCK}${MR_LINE}${ENV_LINE}"
 
-      # --- Отправляем в Telegram ---
       if [ -n "${TELEGRAM_EGRESS_PROXY:-}" ]; then TG_NET="--proxy ${TELEGRAM_EGRESS_PROXY}"; else TG_NET="--resolve api.telegram.org:443:149.154.167.220"; fi
       curl -s $TG_NET \
         --header 'Content-Type: application/json' \

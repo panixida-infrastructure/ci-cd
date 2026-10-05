@@ -192,25 +192,11 @@
         coverage_format: cobertura
         path: "tests-report/raw-coverage/coverage.cobertura.xml"
 
-# ---------------------------------------------------------------------------------------------------
-# ПАРАЛЛЕЛЬНЫЕ ТЕСТЫ (ОПТ-ИН). Существующий .dotnet_tests_mtp (последовательный прогон всех проектов в
-# одной джобе) не трогается — репо без подключения работают как раньше. Кто параллелит, заводит ДВЕ джобы:
-#   tests:           extends .dotnet_test_cell   + parallel:matrix по своим тест-проектам (TEST_SUITE)
-#   tests-coverage:  extends .dotnet_tests_coverage + needs:[tests]
-# Набор проектов кастомизируется matrix'ей на стороне репо. codegen (если нужен) — репо-специфичный шаг,
-# его репо кладёт в СВОЙ before_script (условно по $TEST_SUITE), базовая джоба его НЕ содержит.
-# ---------------------------------------------------------------------------------------------------
-
-# Одна matrix-ячейка = один тест-проект ($TEST_SUITE = имя .csproj без расширения). Гоняет свой проект,
-# отдаёт cobertura+junit артефактами. Порог покрытия здесь НЕ проверяется (частичное) — сводит tests-coverage.
 .dotnet_test_cell:
   interruptible: true
   retry: *retry_infra
   variables:
     REPORT_DIRECTORY: "tests-report"
-    # Параллелизм держим на уровне GitLab-ячеек (job-per-тест-проект), а не внутри процесса:
-    # TUnit по умолчанию гоняет тесты сборки параллельно, из-за чего конкурентные CREATE DATABASE
-    # в интеграционных тестах дерутся за системный лок model. Игнорируется не-TUnit раннерами.
     TUNIT_MAX_PARALLEL_TESTS: "1"
   script:
     - |
@@ -221,26 +207,26 @@
 
       if [ -n "${TEST_CELL_SETUP:-}" ]; then echo "test-cell setup (TEST_CELL_SETUP)"; eval "$TEST_CELL_SETUP"; fi
 
-      # авто-codegen (динамически, без переменных): если тест-проект ссылается на JasperFx-codegen хост
-      # (Program с RunJasperFxCommands/JasperFxEnvironment) — предгенерировать код, иначе функц.WAF компилит
-      # хендлеры в рантайме (Roslyn) → всплеск памяти/времени. Для репо без такого хоста — no-op.
+      if [ -z "${TEST_PROJECT:-}" ]; then
+        TEST_PROJECT=$(find . -type f -name "${TEST_SUITE}.csproj" -not -path "*/bin/*" -not -path "*/obj/*" | head -1)
+      fi
+      if [ -z "$TEST_PROJECT" ] || [ ! -f "$TEST_PROJECT" ]; then
+        echo "Test project ${TEST_PROJECT:-${TEST_SUITE:-}} not found"
+        exit 1
+      fi
+      TEST_REPORT_ID="$(basename "$TEST_PROJECT" .csproj)-$(printf '%s' "$TEST_PROJECT" | sha256sum | cut -c1-16)"
+
       CODEGEN_HOST=""
       for c in $(find . -name '*.csproj' ! -path '*/bin/*' ! -path '*/obj/*'); do
         if grep -rqlE 'RunJasperFxCommands|JasperFxEnvironment' "$(dirname "$c")" --include='*.cs' 2>/dev/null; then CODEGEN_HOST="$c"; break; fi
       done
       if [ -n "$CODEGEN_HOST" ]; then
-        _TESTCS="$(find . -name "${TEST_SUITE}.csproj" ! -path '*/bin/*' ! -path '*/obj/*' | head -1)"
-        if [ -n "$_TESTCS" ] && grep -q "$(basename "$CODEGEN_HOST")" "$_TESTCS"; then
-          echo "auto-codegen: $TEST_SUITE ссылается на $(basename "$CODEGEN_HOST") -> codegen write"
+        if grep -q "$(basename "$CODEGEN_HOST")" "$TEST_PROJECT"; then
+          echo "auto-codegen: $TEST_PROJECT ссылается на $(basename "$CODEGEN_HOST") -> codegen write"
           dotnet run --project "$CODEGEN_HOST" -c Debug --no-launch-profile -- codegen write
         fi
       fi
 
-      TEST_PROJECT=$(find . -type f -name "${TEST_SUITE}.csproj" -not -path "*/bin/*" -not -path "*/obj/*" | head -1)
-      if [ -z "$TEST_PROJECT" ]; then
-        echo "Test project ${TEST_SUITE}.csproj not found"
-        exit 1
-      fi
       echo "Running tests: $TEST_PROJECT"
 
       set +e
@@ -248,9 +234,9 @@
         --results-directory "$REPORT_DIRECTORY" \
         --coverage \
         --coverage-output-format cobertura \
-        --coverage-output "raw-coverage/${TEST_SUITE}.cobertura.xml" \
+        --coverage-output "raw-coverage/${TEST_REPORT_ID}.cobertura.xml" \
         --report-trx \
-        --report-trx-filename "${TEST_SUITE}.trx" \
+        --report-trx-filename "${TEST_REPORT_ID}.trx" \
         --ignore-exit-code 8
       TEST_EXIT=$?
       set -e
@@ -258,7 +244,7 @@
       TOOLS="/dotnet-tools/net$(dotnet --version 2>/dev/null|cut -d. -f1)"; export PATH="$TOOLS:$HOME/.dotnet/tools:$PATH"; mkdir -p "$TOOLS"
       _ensure(){ [ -x "$TOOLS/$1" ] && return 0; ( flock 9 2>/dev/null||true; [ -x "$TOOLS/$1" ] || dotnet tool install --tool-path "$TOOLS" "${@:2}" --configfile ./nuget.config||true ) 9>"$TOOLS/.lock"||true; [ -x "$TOOLS/$1" ] || dotnet tool install --global "${@:2}" --configfile ./nuget.config||true; return 0; }
       _ensure trx2junit trx2junit
-      trx2junit "$REPORT_DIRECTORY/${TEST_SUITE}.trx" --output "$REPORT_DIRECTORY/junit" || true
+      trx2junit "$REPORT_DIRECTORY/${TEST_REPORT_ID}.trx" --output "$REPORT_DIRECTORY/junit" || true
 
       exit $TEST_EXIT
   artifacts:
@@ -270,8 +256,6 @@
     reports:
       junit: "tests-report/junit/*.xml"
 
-# Сводит cobertura всех ячеек tests в один отчёт и проверяет порог COVERAGE_THRESHOLD. Ставится с
-# needs:[tests] → забирает артефакты всех matrix-ячеек (raw-coverage/<TEST_SUITE>.cobertura.xml не конфликтуют).
 .dotnet_tests_coverage:
   interruptible: true
   retry: *retry_infra
@@ -316,11 +300,6 @@
         coverage_format: cobertura
         path: "tests-report/coverage/Cobertura.xml"
 
-# Единая ВНЕШНЯЯ coverage-джоба для динамического child-пайплайна (autodetect).
-# Child содержит только matrix-ячейки (raw-cobertura на ячейку); здесь по bridge trigger-джобы находим
-# дочерний пайплайн, тянем raw-cobertura со ВСЕХ ячеек через GITLAB_API_TOKEN (read_api), сводим один раз,
-# проверяем порог и отдаём coverage_report — чтобы число попадало в MR-виджет (child в него не агрегируется).
-# Подключение в репо: coverage-report: { extends: [.dotnet_tests_coverage_dynamic, .main_changes_rules], needs: [tests] }
 .dotnet_tests_coverage_dynamic:
   interruptible: true
   retry: *retry_infra
@@ -369,41 +348,6 @@
         coverage_format: cobertura
         path: "tests-report/coverage/Cobertura.xml"
 
-# ---------------------------------------------------------------------------------------------------
-# ПРИМЕР подключения в .gitlab-ci.yml репозитория (codegen — репо-специфичный шаг в before_script):
-#
-# tests:
-#   stage: code-quality
-#   image: mcr.microsoft.com/dotnet/sdk:10.0
-#   parallel:
-#     matrix:
-#       - TEST_SUITE: [MyApp.FunctionalTests, MyApp.IntegrationTests, MyApp.UnitTests]
-#   before_script:
-#     - cp "$NUGET_CONFIG_FILE" ./nuget.config
-#     - if [ "$TEST_SUITE" = "MyApp.FunctionalTests" ]; then
-#         dotnet run --project src/MyApp.Host/MyApp.Host.csproj -c Debug --no-launch-profile -- codegen write;
-#       fi
-#   extends: [.dotnet_test_cell, .main_changes_rules]
-#
-# tests-coverage:
-#   stage: code-quality
-#   image: mcr.microsoft.com/dotnet/sdk:10.0
-#   needs: [tests]
-#   extends: [.dotnet_tests_coverage, .main_changes_rules]
-# ---------------------------------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------------------------------
-# АВТООПРЕДЕЛЕНИЕ тест-проектов (dynamic child pipeline) — опционально, вместо ручного parallel:matrix.
-# .dotnet_tests_generate_dynamic находит тест-проекты по СОДЕРЖИМОМУ csproj (ссылка на тест-раннер), генерит
-# дочерний пайплайн (matrix-ячейки .dotnet_test_cell + .dotnet_tests_coverage) и отдаёт его артефактом;
-# репо триггерит его. Codegen (если нужен) — АВТО в .dotnet_test_cell (по ссылке тест-проекта на JasperFx-хост).
-# Подключение в .gitlab-ci.yml репо:
-#   generate-tests: { extends: [.dotnet_tests_generate_dynamic, .main_changes_rules], stage: code-quality }
-#   tests:          { stage: code-quality, needs: [generate-tests],
-#                     trigger: { include: [{artifact: tests-child.yml, job: generate-tests}], strategy: depend } }
-# Признак тест-проекта: Microsoft.NET.Test.Sdk (VSTest) | Microsoft.Testing.Platform (MTP) |
-#   <OutputType>Exe + xunit/nunit (MTP транзитивно через xunit.v3) | MSTest; хелперы *.Testing/*.TestKit исключены.
-# ---------------------------------------------------------------------------------------------------
 .dotnet_tests_generate_dynamic:
   interruptible: true
   image: alpine:latest
@@ -413,20 +357,20 @@
   script:
     - |
       set -eu
-      PROJECTS=""
-      for cs in $(find . -name '*.csproj' ! -path '*/bin/*' ! -path '*/obj/*'); do
+      : > tests-projects.txt
+      find . -name '*.csproj' ! -path '*/bin/*' ! -path '*/obj/*' | while IFS= read -r cs; do
         if grep -qE 'Microsoft\.NET\.Test\.Sdk|Microsoft\.Testing\.(Platform|Extensions)' "$cs" \
            || { grep -qE '<OutputType>[[:space:]]*[Ee]xe' "$cs" && grep -qiE 'xunit|nunit' "$cs"; } \
            || grep -qiE 'MSTest\.Test(Framework|Adapter)' "$cs" \
            || grep -qE 'PackageReference[^>]*"TUnit"' "$cs"; then
           base=$(basename "$cs" .csproj)
           case "$base" in *.Testing|*.TestKit|*TestHelpers) continue;; esac
-          PROJECTS="$PROJECTS $base"
+          printf '%s\n' "${cs#./}" >> tests-projects.txt
         fi
       done
-      PROJECTS=$(printf '%s\n' $PROJECTS | sort -u | grep -v '^$' || true)
-      [ -n "$PROJECTS" ] || { echo "Тест-проекты не найдены"; exit 1; }
-      echo "Найдены тест-проекты:"; printf '  %s\n' $PROJECTS
+      sort -u tests-projects.txt -o tests-projects.txt
+      [ -s tests-projects.txt ] || { echo "Тест-проекты не найдены"; exit 1; }
+      echo "Найдены тест-проекты:"; sed 's/^/  /' tests-projects.txt
       {
         echo 'include:'
         echo "  - remote: \"$DOTNET_TESTS_TEMPLATE_URL\""
@@ -439,16 +383,18 @@
         echo '    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"'
         echo '  parallel:'
         echo '    matrix:'
-        echo '      - TEST_SUITE:'
-        for p in $PROJECTS; do echo "        - $p"; done
+        echo '      - TEST_PROJECT:'
+        while IFS= read -r p; do
+          escaped=$(printf '%s' "$p" | sed "s/'/''/g")
+          printf "        - '%s'\n" "$escaped"
+        done < tests-projects.txt
       } > tests-child.yml
       echo "--- сгенерённый дочерний пайплайн ---"; cat tests-child.yml
+      rm -f tests-projects.txt
   artifacts:
     paths: ["tests-child.yml"]
     expire_in: 1 hour
 
-# Триггер дочернего пайплайна из артефакта генератора — чтобы репо не хардкодил имя tests-child.yml/имя джобы.
-# Репо: tests: { extends: [.dotnet_tests_run_dynamic, .main_changes_rules], stage: code-quality, needs: [generate-tests] }
 .dotnet_tests_run_dynamic:
   interruptible: true
   trigger:

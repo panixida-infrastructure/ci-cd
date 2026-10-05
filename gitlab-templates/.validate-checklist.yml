@@ -11,7 +11,10 @@
         exit 0
       fi
 
-    - DESCRIPTION="$CI_MERGE_REQUEST_DESCRIPTION"
+    - |
+      set -e
+      MR_INFO=$(curl --fail --silent --show-error --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID")
+      DESCRIPTION=$(printf '%s' "$MR_INFO" | jq -r '.description // ""')
     - echo "✅ Проверяем, что все чекбоксы отмечены ([x])..."
     - |
       if echo "$DESCRIPTION" | grep -qE '\[ \]'; then
@@ -34,7 +37,10 @@
         exit 0
       fi
 
-    - DESCRIPTION="$CI_MERGE_REQUEST_DESCRIPTION"
+    - |
+      set -e
+      MR_INFO=$(curl --fail --silent --show-error --header "PRIVATE-TOKEN: $GITLAB_API_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID")
+      DESCRIPTION=$(printf '%s' "$MR_INFO" | jq -r '.description // ""')
     - echo "✅ Проверяем, что все чекбоксы отмечены ([x])..."
     - |
       if echo "$DESCRIPTION" | grep -qE '\[ \]'; then

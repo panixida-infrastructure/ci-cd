@@ -11,7 +11,9 @@
         - cp "$NUGET_CONFIG_FILE" "$PROJECT_FOLDER/nuget.config"
 
         - |
-          if [[ -n "${SKIP_BUILD_ON_PACK}" && "${SKIP_BUILD_ON_PACK,,}" == "false" ]]; then
+          NO_BUILD_PARAM=""
+          SKIP_BUILD_ON_PACK="${SKIP_BUILD_ON_PACK:-false}"
+          if [[ "${SKIP_BUILD_ON_PACK,,}" == "true" ]]; then
             NO_BUILD_PARAM="--no-build"
             echo "⚠️  Using --no-build mode. Ensure all ProjectReference dependencies were pre-built!"
           else

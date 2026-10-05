@@ -16,9 +16,5 @@ variables:
   SERVER_WWWROOT_SERVICE_FOLDER: $SERVER_SERVICE_FOLDER/wwwroot/Uploads
   SERVICE_WWWROOT_FOLDER: /app/wwwroot/Uploads
 
-  # Дополнительные docker-volume флаги для конкретного сервиса.
-  # Проект может переопределить эту переменную в своём .gitlab-ci.yml, чтобы
-  # пробросить дополнительные тома в контейнер (например, для persistent логов).
-  # Пример: EXTRA_VOLUMES: "--volume $SERVER_SERVICE_FOLDER/logs:/var/log/nginx"
   EXTRA_VOLUMES: ""
   DOCKER_BUILDKIT: "1"

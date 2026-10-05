@@ -2,6 +2,7 @@
   interruptible: true
   image: golang:1.25
   variables:
+    GIT_DEPTH: "0"
     STRICT_LINT: "true"
   before_script:
     - set -euo pipefail

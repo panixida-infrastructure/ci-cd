@@ -52,7 +52,7 @@ tests:
   Настройте `NUGET_PROJECT`; `NUGET_BUILD_PROJECT` и `NUGET_PACK_PROJECT`
   позволяют разделить проекты сборки и упаковки.
 
-## Отличие от источника
+## Отличия от источника
 
 `.dotnet_tests_generate_dynamic` включает нашу копию `.dotnet-tests-template.yml`
 через `include:remote` вместо GitLab-проекта `infra/cicd`. URL задаётся переменной
@@ -60,7 +60,31 @@ tests:
 При фиксации родительского include на SHA задайте той же версии и эту переменную.
 Runner генератора и GitLab должны иметь доступ к `raw.githubusercontent.com`.
 
-Остальная логика перенесена из источника. .NET jobs с persistent cache используют
+После проверки замечаний PR внесены локальные исправления:
+
+- Проверка checklist получает полное описание MR через API и требует
+  `GITLAB_API_TOKEN` с правом чтения MR; ошибка API завершает job с ошибкой.
+- Go lint получает полную Git-историю (`GIT_DEPTH: "0"`) для сравнения с базой MR.
+- `SKIP_BUILD_ON_PACK: "true"` включает `--no-build`; `false` или отсутствие
+  переменной оставляют сборку во время pack.
+- Динамическая матрица содержит `TEST_PROJECT` с путём к `.csproj`; проекты
+  с одинаковым именем получают отдельные jobs и файлы отчётов. Ручные матрицы
+  с `TEST_SUITE` по имени проекта остаются совместимы.
+- Установка SonarScanner/format передаёт `--configfile` команде установки.
+- Поясняющие комментарии удалены из YAML-шаблонов.
+
+.NET jobs с persistent cache используют
 каталоги `/dotnet-tools` и `/sonar`; права на них и установленные SDK/Java необходимо
 проверить на выбранном runner. Это синхронизация шаблонов, выполнение сборок,
 миграций и деплоя проверяется в подключающем проекте.
+
+## Локальные проверки
+
+Нужны Python 3, Git и Bash. На Windows укажите путь к Git Bash в
+`GITLAB_TEST_BASH`. Проверки выполняют shell-код шаблонов с заглушками внешних
+команд и воспроизводят сценарии из review без публикации пакетов и деплоя.
+
+```shell
+python -m pip install -r tests/requirements.txt
+python -m unittest discover -s tests -p test_gitlab_templates.py -v
+```
