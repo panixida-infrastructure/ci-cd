@@ -121,6 +121,52 @@ jobs:
         run: |
           dotnet restore
 
+      - name: Collect pull request head coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        working-directory: ${{ vars.PROJECT_FOLDER }}
+        env:
+          COVERAGE_EXCLUDED_TEST_PROJECTS: ${{ vars.COVERAGE_EXCLUDED_TEST_PROJECTS }}
+          COVERAGE_ASSEMBLY_FILTERS: ${{ vars.COVERAGE_ASSEMBLY_FILTERS }}
+        run: |
+          set -euo pipefail
+          coverage_directory="$(mktemp -d)"
+          trap 'rm -rf "$coverage_directory"' EXIT
+          excluded_patterns=()
+          if [[ -n "$COVERAGE_EXCLUDED_TEST_PROJECTS" ]]; then
+            read -r -a excluded_patterns <<< "$COVERAGE_EXCLUDED_TEST_PROJECTS"
+          fi
+          mapfile -t test_projects < <(find . -name '*Tests.csproj' | sort)
+          report_index=0
+          for project in "${test_projects[@]}"; do
+            excluded=false
+            for pattern in "${excluded_patterns[@]}"; do
+              if [[ -n "$(find "$project" -path "$pattern" -print)" ]]; then
+                excluded=true
+                break
+              fi
+            done
+            [[ "$excluded" == false ]] || continue
+            report_index=$((report_index + 1))
+            dotnet test --project "$project" --no-restore \
+              --results-directory "$coverage_directory/$report_index" \
+              --coverage --coverage-output-format cobertura \
+              --coverage-output coverage.cobertura.xml
+            if [[ ! -f "$coverage_directory/$report_index/coverage.cobertura.xml" ]]; then
+              echo "::error::PR head coverage was not produced for $project"
+              exit 1
+            fi
+          done
+          if [[ "$report_index" == 0 ]]; then
+            echo "::error::No test projects eligible for PR head coverage"
+            exit 1
+          fi
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.11
+          "$HOME/.dotnet/tools/reportgenerator" \
+            "-reports:$coverage_directory/*/coverage.cobertura.xml" \
+            '-targetdir:tests-report/sonar' '-reporttypes:SonarQube' \
+            "-assemblyfilters:$COVERAGE_ASSEMBLY_FILTERS" \
+            '-filefilters:-*/obj/*;-*/Migrations/*'
+
       - name: Build and analyze
         working-directory: ${{ vars.PROJECT_FOLDER }}
         env:

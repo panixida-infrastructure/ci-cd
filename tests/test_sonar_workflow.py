@@ -82,5 +82,64 @@ class SonarWorkflowTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class PullRequestCoverageTests(unittest.TestCase):
+    def collect(self, *, omit_report=False, exclusions='*ContainerTests.csproj'):
+        source = WORKFLOW.read_text().split('      - name: Collect pull request head coverage\n', 1)[1]
+        program = textwrap.dedent(source.split('        run: |\n', 1)[1].split('      - name: Build and analyze\n', 1)[0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for name in ('UnitTests.csproj', 'ContainerTests.csproj'):
+                (root / name).write_text('<Project/>')
+            bin_directory = root / 'bin'
+            bin_directory.mkdir()
+            tools_directory = root / '.dotnet/tools'
+            tools_directory.mkdir(parents=True)
+            dotnet = bin_directory / 'dotnet'
+            dotnet.write_text('''#!/usr/bin/env python3
+import json, os, pathlib, sys
+args = sys.argv[1:]
+with open(os.environ['ARGUMENT_LOG'], 'a') as log:
+    log.write(json.dumps(args) + '\\n')
+if args[0] == 'test' and os.environ['OMIT_REPORT'] != 'true':
+    directory = pathlib.Path(args[args.index('--results-directory') + 1])
+    directory.mkdir(parents=True)
+    (directory / 'coverage.cobertura.xml').write_text('<coverage/>')
+''')
+            dotnet.chmod(0o755)
+            generator = tools_directory / 'reportgenerator'
+            generator.write_text('''#!/usr/bin/env python3
+import pathlib
+directory = pathlib.Path('tests-report/sonar')
+directory.mkdir(parents=True)
+(directory / 'SonarQube.xml').write_text('head-coverage')
+''')
+            generator.chmod(0o755)
+            log = root / 'calls'
+            env = {**os.environ, 'HOME': str(root), 'PATH': f'{bin_directory}:{os.environ["PATH"]}',
+                   'ARGUMENT_LOG': str(log), 'OMIT_REPORT': str(omit_report).lower(),
+                   'COVERAGE_EXCLUDED_TEST_PROJECTS': exclusions, 'COVERAGE_ASSEMBLY_FILTERS': ''}
+            result = subprocess.run(['bash', '-c', program], cwd=root, env=env,
+                                    capture_output=True, text=True, timeout=10)
+            calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            report = root / 'tests-report/sonar/SonarQube.xml'
+            return result, calls, report.read_text() if report.exists() else None
+
+    def test_head_coverage_respects_instrumentation_exclusions_and_produces_sonar_report(self):
+        result, calls, report = self.collect()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tests = [call for call in calls if call[0] == 'test']
+        self.assertEqual(len(tests), 1)
+        self.assertIn('./UnitTests.csproj', tests[0])
+        self.assertIn('--coverage', tests[0])
+        self.assertEqual(report, 'head-coverage')
+
+    def test_missing_or_ineligible_head_coverage_fails_without_reusing_merge_report(self):
+        for options in ({'omit_report': True}, {'exclusions': '*Tests.csproj'}):
+            with self.subTest(options=options):
+                result, _, report = self.collect(**options)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIsNone(report)
+
+
 if __name__ == '__main__':
     unittest.main()

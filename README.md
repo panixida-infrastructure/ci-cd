@@ -84,8 +84,11 @@ and analyzes a .NET solution, then waits for the SonarQube Quality Gate.
 
 Pull requests analyze their head commit against the actual target branch with
 `sonar.pullrequest.*`. Pushes analyze their named branch with `sonar.branch.name`.
-The test workflow checks out the same commit so its coverage matches the analyzed
-source. Full history and the target branch are fetched for SCM comparison.
+The required test workflow still tests the synthetic merge commit, preserving
+verification of compatibility with the current target branch. On PRs, the Sonar
+job reruns eligible tests on the head commit to regenerate matching coverage;
+pushes reuse the downloaded report. This adds a second coverage run for PRs.
+Full history and the target branch are fetched for SCM comparison.
 The SonarQube server must support branch/PR analysis and the target must already
 have a successful analysis. The server's GitHub App posts the Quality Gate check
 and summary comment; the workflow's token needs only read access to source.
