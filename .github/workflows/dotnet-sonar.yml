@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: dotnet-coverage-sonarqube
+      project-version-file:
+        description: Repository-relative JSON file containing the stable version field (for Previous version)
+        required: false
+        type: string
+        default: ''
 
     secrets:
       sonar-token:
@@ -32,6 +37,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Fetch pull request target
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          TARGET_BRANCH: ${{ github.base_ref }}
+        run: git fetch origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
 
       - name: Download coverage report
         uses: actions/download-artifact@v8
@@ -109,6 +121,52 @@ jobs:
         run: |
           dotnet restore
 
+      - name: Collect pull request head coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        working-directory: ${{ vars.PROJECT_FOLDER }}
+        env:
+          COVERAGE_EXCLUDED_TEST_PROJECTS: ${{ vars.COVERAGE_EXCLUDED_TEST_PROJECTS }}
+          COVERAGE_ASSEMBLY_FILTERS: ${{ vars.COVERAGE_ASSEMBLY_FILTERS }}
+        run: |
+          set -euo pipefail
+          coverage_directory="$(mktemp -d)"
+          trap 'rm -rf "$coverage_directory"' EXIT
+          excluded_patterns=()
+          if [[ -n "$COVERAGE_EXCLUDED_TEST_PROJECTS" ]]; then
+            read -r -a excluded_patterns <<< "$COVERAGE_EXCLUDED_TEST_PROJECTS"
+          fi
+          mapfile -t test_projects < <(find . -name '*Tests.csproj' | sort)
+          report_index=0
+          for project in "${test_projects[@]}"; do
+            excluded=false
+            for pattern in "${excluded_patterns[@]}"; do
+              if [[ -n "$(find "$project" -path "$pattern" -print)" ]]; then
+                excluded=true
+                break
+              fi
+            done
+            [[ "$excluded" == false ]] || continue
+            report_index=$((report_index + 1))
+            dotnet test --project "$project" --no-restore \
+              --results-directory "$coverage_directory/$report_index" \
+              --coverage --coverage-output-format cobertura \
+              --coverage-output coverage.cobertura.xml
+            if [[ ! -f "$coverage_directory/$report_index/coverage.cobertura.xml" ]]; then
+              echo "::error::PR head coverage was not produced for $project"
+              exit 1
+            fi
+          done
+          if [[ "$report_index" == 0 ]]; then
+            echo "::error::No test projects eligible for PR head coverage"
+            exit 1
+          fi
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.11
+          "$HOME/.dotnet/tools/reportgenerator" \
+            "-reports:$coverage_directory/*/coverage.cobertura.xml" \
+            '-targetdir:tests-report/sonar' '-reporttypes:SonarQube' \
+            "-assemblyfilters:$COVERAGE_ASSEMBLY_FILTERS" \
+            '-filefilters:-*/obj/*;-*/Migrations/*'
+
       - name: Build and analyze
         working-directory: ${{ vars.PROJECT_FOLDER }}
         env:
@@ -117,6 +175,14 @@ jobs:
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
           SONAR_PROJECT_KEY: ${{ inputs.project-key }}
           SONAR_TOKEN: ${{ secrets.sonar-token }}
+          SONAR_VERSION_FILE: ${{ inputs.project-version-file }}
+          SONAR_EVENT_NAME: ${{ github.event_name }}
+          SONAR_REF_TYPE: ${{ github.ref_type }}
+          SONAR_BRANCH: ${{ github.ref_name }}
+          SONAR_PR_KEY: ${{ github.event.pull_request.number }}
+          SONAR_PR_BRANCH: ${{ github.head_ref }}
+          SONAR_PR_BASE: ${{ github.base_ref }}
+          SONAR_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
 
@@ -149,6 +215,40 @@ jobs:
 
           if [[ -n "$SONAR_EXCLUSIONS" ]]; then
             SONAR_ARGS+=("/d:sonar.exclusions=$SONAR_EXCLUSIONS")
+          fi
+
+          SONAR_ARGS+=("/d:sonar.scm.revision=$SONAR_REVISION")
+          if [[ "$SONAR_EVENT_NAME" == "pull_request" ]]; then
+            SONAR_ARGS+=(
+              "/d:sonar.pullrequest.key=$SONAR_PR_KEY"
+              "/d:sonar.pullrequest.branch=$SONAR_PR_BRANCH"
+              "/d:sonar.pullrequest.base=$SONAR_PR_BASE"
+            )
+          elif [[ "$SONAR_REF_TYPE" == "branch" ]]; then
+            SONAR_ARGS+=("/d:sonar.branch.name=$SONAR_BRANCH")
+          else
+            echo "::error::SonarQube analysis requires a branch or pull request event"
+            exit 1
+          fi
+
+          if [[ -n "$SONAR_VERSION_FILE" ]]; then
+            project_version="$(python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE']).resolve()
+          relative = pathlib.Path(os.environ['SONAR_VERSION_FILE'])
+          path = (root / relative).resolve()
+          if relative.is_absolute() or not path.is_relative_to(root):
+              raise SystemExit('::error::project-version-file must stay within the repository')
+          try:
+              version = json.loads(path.read_text(encoding='utf-8-sig')).get('version')
+          except (OSError, ValueError, AttributeError) as error:
+              raise SystemExit(f'::error::Cannot read project-version-file: {error}')
+          if not isinstance(version, str) or not version.strip() or any(c in version for c in '\r\n'):
+              raise SystemExit('::error::project-version-file requires a nonempty string version field')
+          print(version.strip())
+          PY
+            )"
+            SONAR_ARGS+=("/v:$project_version")
           fi
 
           dotnet sonarscanner begin "${SONAR_ARGS[@]}"
