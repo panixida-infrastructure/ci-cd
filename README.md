@@ -82,6 +82,22 @@ TRX results; only their coverage instrumentation is disabled.
 The reusable `.github/workflows/dotnet-sonar.yml` workflow restores, builds,
 and analyzes a .NET solution, then waits for the SonarQube Quality Gate.
 
+Pull requests analyze their head commit against the actual target branch with
+`sonar.pullrequest.*`. Pushes analyze their named branch with `sonar.branch.name`.
+The test workflow checks out the same commit so its coverage matches the analyzed
+source. Full history and the target branch are fetched for SCM comparison.
+The SonarQube server must support branch/PR analysis and the target must already
+have a successful analysis. The server's GitHub App posts the Quality Gate check
+and summary comment; the workflow's token needs only read access to source.
+
+NuGet libraries using the server's `Previous version` policy pass the optional
+`project-version-file: version.json` input. Its repository-relative JSON file's
+`.version` string is sent as `sonar.projectVersion` (`/v:`), e.g. `3.0`.
+Use the stable development-cycle version, not the computed package build version
+or CI run number. Increment it when starting the next version cycle. Services
+using a 30-day new-code window omit this input. The server policy is managed by
+the core-platform Sonar inventory; this input only supplies version metadata.
+
 The workflow selects Eclipse Temurin Java 21 explicitly and disables scanner
 JRE auto-provisioning. Analysis uses the configured Java runtime without
 downloading a JRE from SonarQube or relying on the runner's default Java version.
