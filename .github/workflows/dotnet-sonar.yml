@@ -14,10 +14,10 @@ on:
         type: string
         default: dotnet-coverage-sonarqube
       project-version-file:
-        description: Repository-relative JSON file containing the stable version field (for Previous version)
+        description: Repository-relative JSON version file; missing default is skipped, empty disables version metadata
         required: false
         type: string
-        default: ''
+        default: version.json
 
     secrets:
       sonar-token:
@@ -239,6 +239,8 @@ jobs:
           path = (root / relative).resolve()
           if relative.is_absolute() or not path.is_relative_to(root):
               raise SystemExit('::error::project-version-file must stay within the repository')
+          if relative == pathlib.Path('version.json') and not path.exists():
+              raise SystemExit(0)
           try:
               version = json.loads(path.read_text(encoding='utf-8-sig')).get('version')
           except (OSError, ValueError, AttributeError) as error:
@@ -248,7 +250,9 @@ jobs:
           print(version.strip())
           PY
             )"
-            SONAR_ARGS+=("/v:$project_version")
+            if [[ -n "$project_version" ]]; then
+              SONAR_ARGS+=("/v:$project_version")
+            fi
           fi
 
           dotnet sonarscanner begin "${SONAR_ARGS[@]}"

@@ -82,24 +82,11 @@ TRX results; only their coverage instrumentation is disabled.
 The reusable `.github/workflows/dotnet-sonar.yml` workflow restores, builds,
 and analyzes a .NET solution, then waits for the SonarQube Quality Gate.
 
-Pull requests analyze their head commit against the actual target branch with
-`sonar.pullrequest.*`. Pushes analyze their named branch with `sonar.branch.name`.
-The required test workflow still tests the synthetic merge commit, preserving
-verification of compatibility with the current target branch. On PRs, the Sonar
-job reruns eligible tests on the head commit to regenerate matching coverage;
-pushes reuse the downloaded report. This adds a second coverage run for PRs.
-Full history and the target branch are fetched for SCM comparison.
-The SonarQube server must support branch/PR analysis and the target must already
-have a successful analysis. The server's GitHub App posts the Quality Gate check
-and summary comment; the workflow's token needs only read access to source.
-
-NuGet libraries using the server's `Previous version` policy pass the optional
-`project-version-file: version.json` input. Its repository-relative JSON file's
-`.version` string is sent as `sonar.projectVersion` (`/v:`), e.g. `3.0`.
-Use the stable development-cycle version, not the computed package build version
-or CI run number. Increment it when starting the next version cycle. Services
-using a 30-day new-code window omit this input. The server policy is managed by
-the core-platform Sonar inventory; this input only supplies version metadata.
+PRs analyze their head against the target branch and collect matching coverage;
+the test workflow still checks the merge result. Pushes analyze their named branch.
+The root `version.json` file's `.version` is passed as `sonar.projectVersion` when present.
+Use `project-version-file` to override the path or `''` to disable version metadata.
+New-code policies and PR comments are configured in core-platform.
 
 The workflow selects Eclipse Temurin Java 21 explicitly and disables scanner
 JRE auto-provisioning. Analysis uses the configured Java runtime without
