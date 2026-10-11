@@ -172,6 +172,8 @@ jobs:
           fi
 
           SONAR_ARGS+=("/d:sonar.scm.revision=$SONAR_REVISION")
+          # Community Branch Plugin supports PRs targeting any analyzed branch.
+          # Deployed by core-platform: https://github.com/panixida-infrastructure/core-platform/blob/main/docs/sonarqube-branches.md
           if [[ "$SONAR_EVENT_NAME" == "pull_request" ]]; then
             SONAR_ARGS+=(
               "/d:sonar.pullrequest.key=$SONAR_PR_KEY"
