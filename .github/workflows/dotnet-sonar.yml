@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Fetch pull request target
         if: ${{ github.event_name == 'pull_request' }}
@@ -136,7 +136,7 @@ jobs:
           SONAR_PR_KEY: ${{ github.event.pull_request.number }}
           SONAR_PR_BRANCH: ${{ github.head_ref }}
           SONAR_PR_BASE: ${{ github.base_ref }}
-          SONAR_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+          SONAR_REVISION: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
 
