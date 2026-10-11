@@ -82,8 +82,8 @@ TRX results; only their coverage instrumentation is disabled.
 The reusable `.github/workflows/dotnet-sonar.yml` workflow restores, builds,
 and analyzes a .NET solution, then waits for the SonarQube Quality Gate.
 
-PRs analyze their head against the target branch and collect matching coverage;
-the test workflow still checks the merge result. Pushes analyze their named branch.
+Tests and Sonar use the same PR head commit; Sonar reuses coverage from `dotnet-tests`.
+PRs are compared against their target branch. Pushes analyze their named branch.
 The root `version.json` file's `.version` is passed as `sonar.projectVersion` when present.
 Use `project-version-file` to override the path or `''` to disable version metadata.
 New-code policies and PR comments are configured in core-platform.
