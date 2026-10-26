@@ -83,10 +83,12 @@ Optional workflow inputs control preparation and concurrency:
 | Input | Default | Behavior |
 | --- | --- | --- |
 | `max-parallel` | `256` | Limits concurrent matrix jobs; choose a positive integer within the available runner capacity. |
-| `run-analyzers` | `true` | Runs analyzers during each test project build. Set to `false` when a separate required job builds the solution with analyzers enabled. Source generators still run. |
+| `run-analyzers` | `false` | Skips analyzer checks during test project builds by default. Keep those checks in a separate required solution build, or set this input to `true`. Source generators still run. |
 | `restore-solution-for` | `'*'` | Space-separated globs matched against discovered test project paths. Matching projects restore the whole solution; others restore only their project and its references. An empty string enables project-only restore for every job. |
 
-Defaults retain solution restore and analyzer checks for existing callers.
+Defaults retain solution restore and skip analyzer checks in test project builds.
+Callers should run analyzers in a separate required solution build, or explicitly
+set `run-analyzers: true` to check them in the test matrix.
 Projects whose tests load other projects through MSBuildWorkspace may need a
 solution restore even when they do not reference those projects directly.
 Their patterns belong in the consuming repository:
@@ -95,8 +97,6 @@ Their patterns belong in the consuming repository:
 tests:
   uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-tests.yml@main
   with:
-    max-parallel: 18
-    run-analyzers: false
     restore-solution-for: '*ArchitectureTests.csproj'
   secrets:
     registry-user: ${{ secrets.REGISTRY_USER }}
