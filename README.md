@@ -77,6 +77,36 @@ The consuming repository can configure:
 Projects matched by `COVERAGE_EXCLUDED_TEST_PROJECTS` still run and publish
 TRX results; only their coverage instrumentation is disabled.
 
+Each test project is built explicitly before running tests with `--no-build`.
+Optional workflow inputs control preparation and concurrency:
+
+| Input | Default | Behavior |
+| --- | --- | --- |
+| `max-parallel` | `256` | Limits concurrent matrix jobs; choose a positive integer within the available runner capacity. |
+| `run-analyzers` | `true` | Runs analyzers during each test project build. Set to `false` when a separate required job builds the solution with analyzers enabled. Source generators still run. |
+| `restore-solution-for` | `'*'` | Space-separated globs matched against discovered test project paths. Matching projects restore the whole solution; others restore only their project and its references. An empty string enables project-only restore for every job. |
+
+Defaults retain solution restore and analyzer checks for existing callers.
+Projects whose tests load other projects through MSBuildWorkspace may need a
+solution restore even when they do not reference those projects directly.
+Their patterns belong in the consuming repository:
+
+```yaml
+tests:
+  uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-tests.yml@main
+  with:
+    max-parallel: 18
+    run-analyzers: false
+    restore-solution-for: '*ArchitectureTests.csproj'
+  secrets:
+    registry-user: ${{ secrets.REGISTRY_USER }}
+    registry-token: ${{ secrets.REGISTRY_TOKEN }}
+```
+
+This example requires a separate job that builds the full solution with analyzers
+enabled. Parallelization within a test project remains the test framework's
+responsibility; the workflow runs every discovered csproj once without filters.
+
 ## .NET SonarQube workflow
 
 The reusable `.github/workflows/dotnet-sonar.yml` workflow restores, builds,
