@@ -1,5 +1,14 @@
 on:
   workflow_call:
+    inputs:
+      max-parallel:
+        description: Maximum number of test projects running concurrently
+        type: number
+        default: 256
+      run-analyzers:
+        description: Run analyzers when building test projects
+        type: boolean
+        default: false
     secrets:
       registry-user:
         required: true
@@ -96,6 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: ${{ inputs.max-parallel }}
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     env:
       TEST_PROJECT: ${{ matrix.project }}
@@ -130,9 +140,28 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - name: Restore .NET solution
+      - name: Restore test dependencies
         working-directory: ${{ vars.PROJECT_FOLDER }}
-        run: dotnet restore
+        env:
+          RESTORE_SOLUTION_FOR: ${{ vars.RESTORE_SOLUTION_FOR || '*' }}
+        run: |
+          set -euo pipefail
+
+          RESTORE_SOLUTION=false
+          read -r -a SOLUTION_PROJECT_PATTERNS <<< "$RESTORE_SOLUTION_FOR"
+          for PATTERN in "${SOLUTION_PROJECT_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            if [[ "$TEST_PROJECT" == $PATTERN ]]; then
+              RESTORE_SOLUTION=true
+              break
+            fi
+          done
+
+          if [ "$RESTORE_SOLUTION" = "true" ]; then
+            dotnet restore
+          else
+            dotnet restore "$TEST_PROJECT"
+          fi
 
       - name: Prepare test reports
         if: ${{ always() }}
@@ -142,6 +171,12 @@ jobs:
           mkdir -p "$TEST_PROJECT_REPORT_DIRECTORY"
           echo "artifact_path=$(realpath "$REPORT_DIRECTORY")" >> "$GITHUB_OUTPUT"
 
+      - name: Build test project
+        working-directory: ${{ vars.PROJECT_FOLDER }}
+        env:
+          RUN_ANALYZERS: ${{ inputs.run-analyzers }}
+        run: dotnet build "$TEST_PROJECT" --no-restore -p:RunAnalyzers="$RUN_ANALYZERS"
+
       - name: Run tests
         working-directory: ${{ vars.PROJECT_FOLDER }}
         run: |
@@ -149,6 +184,7 @@ jobs:
 
           TEST_ARGS=(
             --project "$TEST_PROJECT"
+            --no-build
             --no-restore
             --results-directory "$TEST_PROJECT_REPORT_DIRECTORY"
             --report-trx
