@@ -72,32 +72,36 @@ The consuming repository can configure:
   projects that cannot run with coverage instrumentation;
 - `COVERAGE_ASSEMBLY_FILTERS` for ReportGenerator assembly filtering;
 - `COVERAGE_THRESHOLD` for the minimum combined line and branch coverage. Each
-  metric must meet the threshold independently.
+  metric must meet the threshold independently;
+- `RESTORE_SOLUTION_FOR` as space-separated test project path globs requiring
+  whole-solution restore. Matching projects restore the solution; other projects
+  restore only their project and its references. When unset or empty, it defaults
+  to `*`, preserving solution restore for every project.
 
 Projects matched by `COVERAGE_EXCLUDED_TEST_PROJECTS` still run and publish
 TRX results; only their coverage instrumentation is disabled.
 
 Each test project is built explicitly before running tests with `--no-build`.
-Optional workflow inputs control preparation and concurrency:
+Optional workflow inputs control analyzer checks and concurrency:
 
 | Input | Default | Behavior |
 | --- | --- | --- |
 | `max-parallel` | `256` | Limits concurrent matrix jobs; choose a positive integer within the available runner capacity. |
 | `run-analyzers` | `false` | Skips analyzer checks during test project builds by default. Keep those checks in a separate required solution build, or set this input to `true`. Source generators still run. |
-| `restore-solution-for` | `'*'` | Space-separated globs matched against discovered test project paths. Matching projects restore the whole solution; others restore only their project and its references. An empty string enables project-only restore for every job. |
 
 Defaults retain solution restore and skip analyzer checks in test project builds.
 Callers should run analyzers in a separate required solution build, or explicitly
 set `run-analyzers: true` to check them in the test matrix.
 Projects whose tests load other projects through MSBuildWorkspace may need a
 solution restore even when they do not reference those projects directly.
-Their patterns belong in the consuming repository:
+Configure `RESTORE_SOLUTION_FOR=*ArchitectureTests.csproj` in the consuming
+repository or its organization for those tests. Like the coverage variables,
+the reusable workflow reads it automatically from the caller's variable context;
+the caller does not need a `with` block:
 
 ```yaml
 tests:
   uses: PANiXiDA-Infrastructure/ci-cd/.github/workflows/dotnet-tests.yml@main
-  with:
-    restore-solution-for: '*ArchitectureTests.csproj'
   secrets:
     registry-user: ${{ secrets.REGISTRY_USER }}
     registry-token: ${{ secrets.REGISTRY_TOKEN }}

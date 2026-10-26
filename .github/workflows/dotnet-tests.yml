@@ -9,10 +9,6 @@ on:
         description: Run analyzers when building test projects
         type: boolean
         default: false
-      restore-solution-for:
-        description: Space-separated test project path globs requiring solution restore; empty restores each project only
-        type: string
-        default: '*'
     secrets:
       registry-user:
         required: true
@@ -147,7 +143,7 @@ jobs:
       - name: Restore test dependencies
         working-directory: ${{ vars.PROJECT_FOLDER }}
         env:
-          RESTORE_SOLUTION_FOR: ${{ inputs.restore-solution-for }}
+          RESTORE_SOLUTION_FOR: ${{ vars.RESTORE_SOLUTION_FOR || '*' }}
         run: |
           set -euo pipefail
 
