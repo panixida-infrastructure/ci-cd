@@ -154,6 +154,7 @@ jobs:
           RESTORE_SOLUTION=false
           read -r -a SOLUTION_PROJECT_PATTERNS <<< "$RESTORE_SOLUTION_FOR"
           for PATTERN in "${SOLUTION_PROJECT_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
             if [[ "$TEST_PROJECT" == $PATTERN ]]; then
               RESTORE_SOLUTION=true
               break
